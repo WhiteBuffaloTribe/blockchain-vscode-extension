@@ -23,14 +23,19 @@ import { ManagedAnsibleEnvironment } from '../fabric/environments/ManagedAnsible
 import { EnvironmentFactory } from '../fabric/environments/EnvironmentFactory';
 import { LocalEnvironment } from '../fabric/environments/LocalEnvironment';
 import { RuntimeTreeItem } from '../explorer/runtimeOps/disconnectedTree/RuntimeTreeItem';
-import { LocalEnvironmentManager } from '../fabric/environments/LocalEnvironmentManager';
-import { ManagedAnsibleEnvironmentManager } from '../fabric/environments/ManagedAnsibleEnvironmentManager';
+import { ExtensionUtil } from '../util/ExtensionUtil';
 
 export async function teardownFabricRuntime(runtimeTreeItem: RuntimeTreeItem, force: boolean = false, environmentName?: string): Promise<void> {
     const outputAdapter: VSCodeBlockchainOutputAdapter = VSCodeBlockchainOutputAdapter.instance();
     outputAdapter.log(LogType.INFO, undefined, 'teardownFabricRuntime');
-    let registryEntry: FabricEnvironmentRegistryEntry;
 
+    // If we're running on Eclipse Che, this is not a supported feature.
+    if (ExtensionUtil.isChe()) {
+        outputAdapter.log(LogType.ERROR, 'Local Fabric functionality is not supported in Eclipse Che or Red Hat CodeReady Workspaces.');
+        return;
+    }
+
+    let registryEntry: FabricEnvironmentRegistryEntry;
     if (environmentName) {
         registryEntry = await FabricEnvironmentRegistry.instance().get(environmentName);
     } else if (!runtimeTreeItem) {
@@ -40,6 +45,7 @@ export async function teardownFabricRuntime(runtimeTreeItem: RuntimeTreeItem, fo
         }
 
         if ((registryEntry && !registryEntry.managedRuntime) || !registryEntry) {
+
             const chosenEnvironment: IBlockchainQuickPickItem<FabricEnvironmentRegistryEntry> = await UserInputUtil.showFabricEnvironmentQuickPickBox('Select an environment to teardown', false, true, true, IncludeEnvironmentOptions.ALLENV, true) as IBlockchainQuickPickItem<FabricEnvironmentRegistryEntry>;
             if (!chosenEnvironment) {
                 return;
@@ -66,15 +72,6 @@ export async function teardownFabricRuntime(runtimeTreeItem: RuntimeTreeItem, fo
 
     if (runtime) {
         runtimeName = runtime.getName();
-
-        // The order matters here as technically a LocalEnvironment is an instanceof a ManagedAnsibleEnvironment
-        if (runtime instanceof LocalEnvironment) {
-            // Delete from manager
-            LocalEnvironmentManager.instance().removeRuntime(runtimeName);
-        } else {
-            // Runtime is an instanceof ManagedAnsibleEnvironment
-            ManagedAnsibleEnvironmentManager.instance().removeRuntime(runtimeName);
-        }
     } else {
         // This is the case when we try to teardown an old 'Local Fabric' runtime, which won't be returned from getEnvironment.
         runtimeName = registryEntry.name;

@@ -101,17 +101,23 @@ export class FabricNode {
     }
 
     public short_name: string;
-    public name: string;
+    public name?: string;
+    public display_name?: string;
     public type: FabricNodeType;
     public api_url: string;
+    public api_options?: object;
     public ca_name?: string;
     public pem?: string;
+    public tls_cert?: string;
+    public tls_ca_root_cert?: string;
+    public tls_ca_root_certs?: string[];
     public ssl_target_name_override?: string;
     public wallet?: string;
     public identity?: string;
     public msp_id?: string;
     public container_name?: string;
     public chaincode_url?: string;
+    public chaincode_options?: object;
     public enroll_secret?: string;
     public enroll_id?: string;
     public cluster_name?: string;

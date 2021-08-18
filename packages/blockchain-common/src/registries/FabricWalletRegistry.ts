@@ -12,12 +12,15 @@
  * limitations under the License.
 */
 'use strict';
+import * as path from 'path';
+import * as fs from 'fs-extra';
 import { FabricWalletRegistryEntry } from './FabricWalletRegistryEntry';
 import { FileConfigurations } from './FileConfigurations';
 import { FileRegistry } from './FileRegistry';
 import { FabricEnvironmentRegistryEntry, EnvironmentType } from './FabricEnvironmentRegistryEntry';
 import { FabricEnvironmentRegistry } from './FabricEnvironmentRegistry';
 import { AnsibleEnvironment } from '../environments/AnsibleEnvironment';
+import { MicrofabEnvironment } from '../environments/MicrofabEnvironment';
 
 export class FabricWalletRegistry extends FileRegistry<FabricWalletRegistryEntry> {
 
@@ -61,12 +64,21 @@ export class FabricWalletRegistry extends FileRegistry<FabricWalletRegistryEntry
 
     public async get(name: string, fromEnvironment?: string): Promise<FabricWalletRegistryEntry> {
         const entries: FabricWalletRegistryEntry[] = await this.getAll();
-
         const entry: FabricWalletRegistryEntry = entries.find((item: FabricWalletRegistryEntry) => {
-            if (item.fromEnvironment) {
+            if (item.fromEnvironment && item.fromEnvironment === fromEnvironment) {
                 return item.name === name && item.fromEnvironment === fromEnvironment;
             } else {
-                return item.name === name;
+                if (item.name === name) {
+                    if (item.environmentGroups) {
+                        if (item.environmentGroups.length && fromEnvironment) {
+                            return item.environmentGroups.includes(fromEnvironment);
+                        } else {
+                            return item;
+                        }
+                    } else {
+                        return item;
+                    }
+                }
             }
         });
 
@@ -83,18 +95,17 @@ export class FabricWalletRegistry extends FileRegistry<FabricWalletRegistryEntry
         const normalEntries: FabricWalletRegistryEntry[] = await super.getEntries();
         const otherEntries: FabricWalletRegistryEntry[] = [];
 
-        let environmentEntries: FabricEnvironmentRegistryEntry[] = await FabricEnvironmentRegistry.instance().getAll();
+        const environmentEntries: FabricEnvironmentRegistryEntry[] = await FabricEnvironmentRegistry.instance().getAll();
 
-        // just get the ansible ones
-        environmentEntries = environmentEntries.filter((entry: FabricEnvironmentRegistryEntry) => {
+        // Get wallets from all Ansible environments.
+        const ansibleEnvironmentEntries: FabricEnvironmentRegistryEntry[] = environmentEntries.filter((entry: FabricEnvironmentRegistryEntry) => {
             return entry.environmentType === EnvironmentType.ANSIBLE_ENVIRONMENT || entry.environmentType === EnvironmentType.LOCAL_ENVIRONMENT;
         });
-
-        for (const environmentEntry of environmentEntries) {
-            const environment: AnsibleEnvironment = new AnsibleEnvironment(environmentEntry.name, environmentEntry.environmentDirectory);
+        for (const ansibleEnvironmentEntry of ansibleEnvironmentEntries) {
+            const environment: AnsibleEnvironment = new AnsibleEnvironment(ansibleEnvironmentEntry.name, ansibleEnvironmentEntry.environmentDirectory);
             let walletEntries: FabricWalletRegistryEntry[] = await environment.getWalletsAndIdentities();
             walletEntries = walletEntries.map((entry: FabricWalletRegistryEntry) => {
-                if (environmentEntry.managedRuntime) {
+                if (ansibleEnvironmentEntry.managedRuntime) {
                     entry.managedWallet = true;
                 }
 
@@ -103,14 +114,36 @@ export class FabricWalletRegistry extends FileRegistry<FabricWalletRegistryEntry
             otherEntries.push(...walletEntries);
         }
 
+        // Get wallets from all Microfab environments.
+        const microfabEnvironmentEntries: FabricEnvironmentRegistryEntry[] = environmentEntries.filter((entry: FabricEnvironmentRegistryEntry) => {
+            return entry.environmentType === EnvironmentType.MICROFAB_ENVIRONMENT;
+        });
+        for (const microfabEnvironmentEntry of microfabEnvironmentEntries) {
+            const environment: MicrofabEnvironment = this.newMicrofabEnvironment(microfabEnvironmentEntry.name, microfabEnvironmentEntry.environmentDirectory, microfabEnvironmentEntry.url);
+            const walletEntries: FabricWalletRegistryEntry[] = await environment.getWalletsAndIdentities();
+            otherEntries.push(...walletEntries);
+        }
+
         return [...normalEntries, ...otherEntries].sort((a: FabricWalletRegistryEntry, b: FabricWalletRegistryEntry): number => {
             const aName: string = a.displayName ? a.displayName : a.name;
             const bName: string = b.displayName ? b.displayName : b.name;
-            if (aName > bName) {
-                return 1;
-            } else {
-                return -1;
-            }
+            return aName.localeCompare(bName);
         });
     }
+
+    public async update(entry: FabricWalletRegistryEntry): Promise<void> {
+        if (entry.fromEnvironment) {
+            await fs.ensureDir(entry.walletPath);
+            const entryPath: string = path.join(entry.walletPath, this.FILE_NAME);
+            await fs.writeJSON(entryPath, entry);
+            this.emit(FileRegistry.EVENT_NAME, 'wallets');
+        } else {
+            await super.update(entry);
+        }
+    }
+
+    public newMicrofabEnvironment(name: string, directory: string, url: string): MicrofabEnvironment {
+        return new MicrofabEnvironment(name, directory, url);
+    }
+
 }

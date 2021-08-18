@@ -15,10 +15,13 @@
 import { RegistryEntry } from './RegistryEntry';
 
 export enum EnvironmentType {
+    // If we update this enum, we must update environmentConnectCommand too!
     ENVIRONMENT = 1, // Standard remote environment
     ANSIBLE_ENVIRONMENT = 2, // Ansible environment (non-managed or managed)
     OPS_TOOLS_ENVIRONMENT = 3,
-    LOCAL_ENVIRONMENT = 4 // Local environments
+    LOCAL_ENVIRONMENT = 4, // Local environments
+    SAAS_OPS_TOOLS_ENVIRONMENT = 5,
+    MICROFAB_ENVIRONMENT = 6
 }
 
 export class FabricEnvironmentRegistryEntry extends RegistryEntry {

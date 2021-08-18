@@ -23,10 +23,18 @@ import { LocalEnvironment } from '../fabric/environments/LocalEnvironment';
 import { RuntimeTreeItem } from '../explorer/runtimeOps/disconnectedTree/RuntimeTreeItem';
 import { IBlockchainQuickPickItem, UserInputUtil, IncludeEnvironmentOptions } from './UserInputUtil';
 import { EnvironmentFactory } from '../fabric/environments/EnvironmentFactory';
+import { ExtensionUtil } from '../util/ExtensionUtil';
 
 export async function stopFabricRuntime(runtimeTreeItem?: RuntimeTreeItem): Promise<void> {
     const outputAdapter: VSCodeBlockchainOutputAdapter = VSCodeBlockchainOutputAdapter.instance();
     outputAdapter.log(LogType.INFO, undefined, 'stopFabricRuntime');
+
+    // If we're running on Eclipse Che, this is not a supported feature.
+    if (ExtensionUtil.isChe()) {
+        outputAdapter.log(LogType.ERROR, 'Local Fabric functionality is not supported in Eclipse Che or Red Hat CodeReady Workspaces.');
+        return;
+    }
+
     let registryEntry: FabricEnvironmentRegistryEntry;
     if (!runtimeTreeItem) {
 
@@ -36,7 +44,7 @@ export async function stopFabricRuntime(runtimeTreeItem?: RuntimeTreeItem): Prom
         }
 
         if ((registryEntry && !registryEntry.managedRuntime) || !registryEntry) {
-            const chosenEnvironment: IBlockchainQuickPickItem<FabricEnvironmentRegistryEntry> = await UserInputUtil.showFabricEnvironmentQuickPickBox('Select an environment to stop', false, true, true, IncludeEnvironmentOptions.ALLENV, true) as IBlockchainQuickPickItem<FabricEnvironmentRegistryEntry>;
+            const chosenEnvironment: IBlockchainQuickPickItem<FabricEnvironmentRegistryEntry> = await UserInputUtil.showFabricEnvironmentQuickPickBox('Select an environment to stop', false, true, true, IncludeEnvironmentOptions.ALLENV, true, undefined, true) as IBlockchainQuickPickItem<FabricEnvironmentRegistryEntry>;
             if (!chosenEnvironment) {
                 return;
             }

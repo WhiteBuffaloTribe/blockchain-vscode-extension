@@ -41,6 +41,7 @@ describe('PreReqView', () => {
     let createWebviewPanelStub: sinon.SinonStub;
     let reporterStub: sinon.SinonStub;
     let executeCommandStub: sinon.SinonStub;
+    const nodeJsRequirement: string = Dependencies.NODEJS_REQUIRED.replace(/<.*\|\|/, '||').replace(/<.*/, '');
 
     before(async () => {
         await TestUtil.setupTests(mySandBox);
@@ -66,7 +67,8 @@ describe('PreReqView', () => {
             reveal: mySandBox.stub(),
             dispose: mySandBox.stub(),
             onDidDispose: mySandBox.stub(),
-            onDidChangeViewState: mySandBox.stub()
+            onDidChangeViewState: mySandBox.stub(),
+            _isDisposed: false
 
         });
 
@@ -97,8 +99,8 @@ describe('PreReqView', () => {
 
         it('should show message that all prerequisites have been installed', async () => {
             const dependencies: any = {
-                node: {name: 'Node.js', required: true, version: '8.12.0', url: 'https://nodejs.org/en/download/', requiredVersion: Dependencies.NODEJS_REQUIRED, requiredLabel: 'only' },
-                npm: {name: 'npm', required: true, version: '6.4.1', url: 'https://nodejs.org/en/download/', requiredVersion: Dependencies.NPM_REQUIRED, requiredLabel: '' },
+                node: {name: 'Node.js', required: true, version: '10.15.3', url: 'https://nodejs.org/en/download/releases', requiredVersion: Dependencies.NODEJS_REQUIRED, requiredLabel: 'only' },
+                npm: {name: 'npm', required: true, version: '6.4.1', url: 'https://nodejs.org/en/download/releases', requiredVersion: Dependencies.NPM_REQUIRED, requiredLabel: '' },
                 docker: {name: 'Docker', required: true, version: '17.7.0', url: 'https://www.docker.com/get-started', requiredVersion: Dependencies.DOCKER_REQUIRED, requiredLabel: '' },
                 dockerCompose: {name: 'Docker Compose', required: true, version: '1.15.0', url: 'https://docs.docker.com/compose/install/', requiredVersion: Dependencies.DOCKER_COMPOSE_REQUIRED, requiredLabel: '' },
                 xcode: {name: 'Xcode', required: true, version: '123', url: 'https://apps.apple.com/gb/app/xcode/id497799835', requiredVersion: undefined, requiredLabel: undefined},
@@ -125,8 +127,8 @@ describe('PreReqView', () => {
             html.should.contain(`<div id="check-finish-button" class="finish" onclick="finish();">Let's Blockchain!</div>`); // The button should indicate that the dependencies have been installed
             html.should.contain('<span class="prereqs-number">(0)</span>'); // No missing (required) dependencies
 
-            html.should.contain(`"node":{"name":"Node.js","required":true,"version":"8.12.0","url":"https://nodejs.org/en/download/","requiredVersion":"${Dependencies.NODEJS_REQUIRED}","requiredLabel":"only"}`);
-            html.should.contain(`"npm":{"name":"npm","required":true,"version":"6.4.1","url":"https://nodejs.org/en/download/","requiredVersion":"${Dependencies.NPM_REQUIRED}","requiredLabel":""}`);
+            html.should.contain(`"node":{"name":"Node.js","required":true,"version":"10.15.3","url":"https://nodejs.org/en/download/releases","requiredVersion":"${nodeJsRequirement}","requiredLabel":"only"}`);
+            html.should.contain(`"npm":{"name":"npm","required":true,"version":"6.4.1","url":"https://nodejs.org/en/download/releases","requiredVersion":"${Dependencies.NPM_REQUIRED}","requiredLabel":""}`);
             html.should.contain(`"docker":{"name":"Docker","required":true,"version":"17.7.0","url":"https://www.docker.com/get-started","requiredVersion":"${Dependencies.DOCKER_REQUIRED}","requiredLabel":""}`);
             html.should.contain(`"dockerCompose":{"name":"Docker Compose","required":true,"version":"1.15.0","url":"https://docs.docker.com/compose/install/","requiredVersion":"${Dependencies.DOCKER_COMPOSE_REQUIRED}","requiredLabel":""}`);
             html.should.contain(`"xcode":{"name":"Xcode","required":true,"version":"123","url":"https://apps.apple.com/gb/app/xcode/id497799835"}`);
@@ -141,8 +143,8 @@ describe('PreReqView', () => {
 
         it(`shouldn't show message that prerequisites have been installed`, async () => {
             const dependencies: any = {
-                node: {name: 'Node.js', required: true, version: undefined, url: 'https://nodejs.org/en/download/', requiredVersion: Dependencies.NODEJS_REQUIRED, requiredLabel: 'only' },
-                npm: {name: 'npm', required: true, version: '6.4.1', url: 'https://nodejs.org/en/download/', requiredVersion: Dependencies.NPM_REQUIRED, requiredLabel: '' },
+                node: {name: 'Node.js', required: true, version: undefined, url: 'https://nodejs.org/en/download/releases', requiredVersion: Dependencies.NODEJS_REQUIRED, requiredLabel: 'only' },
+                npm: {name: 'npm', required: true, version: '6.4.1', url: 'https://nodejs.org/en/download/releases', requiredVersion: Dependencies.NPM_REQUIRED, requiredLabel: '' },
                 docker: {name: 'Docker', required: true, version: undefined, url: 'https://www.docker.com/get-started', requiredVersion: Dependencies.DOCKER_REQUIRED, requiredLabel: '' },
                 dockerCompose: {name: 'Docker Compose', required: true, version: '1.15.0', url: 'https://docs.docker.com/compose/install/', requiredVersion: Dependencies.DOCKER_COMPOSE_REQUIRED, requiredLabel: '' },
                 xcode: {name: 'Xcode', required: true, version: '123', url: 'https://apps.apple.com/gb/app/xcode/id497799835', requiredVersion: undefined, requiredLabel: undefined},
@@ -170,7 +172,7 @@ describe('PreReqView', () => {
             html.should.contain('<span class="prereqs-number">(2)</span>'); // Missing (required) dependencies
 
             html.should.not.contain(`"node":{"name":"Node.js","required":true,"version"`);
-            html.should.contain(`"npm":{"name":"npm","required":true,"version":"6.4.1","url":"https://nodejs.org/en/download/","requiredVersion":"${Dependencies.NPM_REQUIRED}","requiredLabel":""}`);
+            html.should.contain(`"npm":{"name":"npm","required":true,"version":"6.4.1","url":"https://nodejs.org/en/download/releases","requiredVersion":"${Dependencies.NPM_REQUIRED}","requiredLabel":""}`);
             html.should.not.contain(`"docker":{"name":"Docker","required":true,"version"`);
             html.should.contain(`"dockerCompose":{"name":"Docker Compose","required":true,"version":"1.15.0","url":"https://docs.docker.com/compose/install/","requiredVersion":"${Dependencies.DOCKER_COMPOSE_REQUIRED}","requiredLabel":""}`);
             html.should.contain(`"xcode":{"name":"Xcode","required":true,"version":"123","url":"https://apps.apple.com/gb/app/xcode/id497799835"}`);
@@ -191,8 +193,8 @@ describe('PreReqView', () => {
             const preReqView: PreReqView = new PreReqView(context);
 
             const dependencies: any = {
-                node: {name: 'Node.js', required: true, version: '8.12.0', url: 'https://nodejs.org/en/download/', requiredVersion: Dependencies.NODEJS_REQUIRED, requiredLabel: 'only' },
-                npm: {name: 'npm', required: true, version: '6.4.1', url: 'https://nodejs.org/en/download/', requiredVersion: Dependencies.NPM_REQUIRED, requiredLabel: '' },
+                node: {name: 'Node.js', required: true, version: '10.15.3', url: 'https://nodejs.org/en/download/releases', requiredVersion: Dependencies.NODEJS_REQUIRED, requiredLabel: 'only' },
+                npm: {name: 'npm', required: true, version: '6.4.1', url: 'https://nodejs.org/en/download/releases', requiredVersion: Dependencies.NPM_REQUIRED, requiredLabel: '' },
                 docker: {name: 'Docker', required: true, version: '17.7.0', url: 'https://www.docker.com/get-started', requiredVersion: Dependencies.DOCKER_REQUIRED, requiredLabel: '' },
                 dockerCompose: {name: 'Docker Compose', required: true, version: '1.15.0', url: 'https://docs.docker.com/compose/install/', requiredVersion: Dependencies.DOCKER_COMPOSE_REQUIRED, requiredLabel: '' },
                 xcode: {name: 'Xcode', required: true, version: '123', url: 'https://apps.apple.com/gb/app/xcode/id497799835', requiredVersion: undefined, requiredLabel: undefined},
@@ -212,8 +214,8 @@ describe('PreReqView', () => {
             html.should.contain(`<div id="check-finish-button" class="finish" onclick="finish();">Let's Blockchain!</div>`); // The button should indicate that the dependencies have been installed
             html.should.contain('<span class="prereqs-number">(0)</span>'); // No missing (required) dependencies
 
-            html.should.contain(`"node":{"name":"Node.js","required":true,"version":"8.12.0","url":"https://nodejs.org/en/download/","requiredVersion":"${Dependencies.NODEJS_REQUIRED}","requiredLabel":"only"}`);
-            html.should.contain(`"npm":{"name":"npm","required":true,"version":"6.4.1","url":"https://nodejs.org/en/download/","requiredVersion":"${Dependencies.NPM_REQUIRED}","requiredLabel":""}`);
+            html.should.contain(`"node":{"name":"Node.js","required":true,"version":"10.15.3","url":"https://nodejs.org/en/download/releases","requiredVersion":"${nodeJsRequirement}","requiredLabel":"only"}`);
+            html.should.contain(`"npm":{"name":"npm","required":true,"version":"6.4.1","url":"https://nodejs.org/en/download/releases","requiredVersion":"${Dependencies.NPM_REQUIRED}","requiredLabel":""}`);
             html.should.contain(`"docker":{"name":"Docker","required":true,"version":"17.7.0","url":"https://www.docker.com/get-started","requiredVersion":"${Dependencies.DOCKER_REQUIRED}","requiredLabel":""}`);
             html.should.contain(`"dockerCompose":{"name":"Docker Compose","required":true,"version":"1.15.0","url":"https://docs.docker.com/compose/install/","requiredVersion":"${Dependencies.DOCKER_COMPOSE_REQUIRED}","requiredLabel":""}`);
             html.should.contain(`"xcode":{"name":"Xcode","required":true,"version":"123","url":"https://apps.apple.com/gb/app/xcode/id497799835"}`);
@@ -242,8 +244,8 @@ describe('PreReqView', () => {
             const preReqView: PreReqView = new PreReqView(context);
 
             const dependencies: any = {
-                node: {name: 'Node.js', required: true, version: '8.12.0', url: 'https://nodejs.org/en/download/', requiredVersion: Dependencies.NODEJS_REQUIRED, requiredLabel: 'only' },
-                npm: {name: 'npm', required: true, version: '6.4.1', url: 'https://nodejs.org/en/download/', requiredVersion: Dependencies.NPM_REQUIRED, requiredLabel: '' },
+                node: {name: 'Node.js', required: true, version: '10.15.3', url: 'https://nodejs.org/en/download/releases', requiredVersion: Dependencies.NODEJS_REQUIRED, requiredLabel: 'only' },
+                npm: {name: 'npm', required: true, version: '6.4.1', url: 'https://nodejs.org/en/download/releases', requiredVersion: Dependencies.NPM_REQUIRED, requiredLabel: '' },
                 docker: {name: 'Docker', required: true, version: '17.7.0', url: 'https://www.docker.com/get-started', requiredVersion: Dependencies.DOCKER_REQUIRED, requiredLabel: '' },
                 dockerCompose: {name: 'Docker Compose', required: true, version: '1.15.0', url: 'https://docs.docker.com/compose/install/', requiredVersion: Dependencies.DOCKER_COMPOSE_REQUIRED, requiredLabel: '' },
                 xcode: {name: 'Xcode', required: true, version: '123', url: 'https://apps.apple.com/gb/app/xcode/id497799835', requiredVersion: undefined, requiredLabel: undefined},
@@ -264,8 +266,8 @@ describe('PreReqView', () => {
             html.should.contain(`<div id="check-finish-button" class="finish" onclick="finish();">Let's Blockchain!</div>`); // The button should indicate that the dependencies have been installed
             html.should.contain('<span class="prereqs-number">(0)</span>'); // No missing (required) dependencies
 
-            html.should.contain(`"node":{"name":"Node.js","required":true,"version":"8.12.0","url":"https://nodejs.org/en/download/","requiredVersion":"${Dependencies.NODEJS_REQUIRED}","requiredLabel":"only"}`);
-            html.should.contain(`"npm":{"name":"npm","required":true,"version":"6.4.1","url":"https://nodejs.org/en/download/","requiredVersion":"${Dependencies.NPM_REQUIRED}","requiredLabel":""}`);
+            html.should.contain(`"node":{"name":"Node.js","required":true,"version":"10.15.3","url":"https://nodejs.org/en/download/releases","requiredVersion":"${nodeJsRequirement}","requiredLabel":"only"}`);
+            html.should.contain(`"npm":{"name":"npm","required":true,"version":"6.4.1","url":"https://nodejs.org/en/download/releases","requiredVersion":"${Dependencies.NPM_REQUIRED}","requiredLabel":""}`);
             html.should.contain(`"docker":{"name":"Docker","required":true,"version":"17.7.0","url":"https://www.docker.com/get-started","requiredVersion":"${Dependencies.DOCKER_REQUIRED}","requiredLabel":""}`);
             html.should.contain(`"dockerCompose":{"name":"Docker Compose","required":true,"version":"1.15.0","url":"https://docs.docker.com/compose/install/","requiredVersion":"${Dependencies.DOCKER_COMPOSE_REQUIRED}","requiredLabel":""}`);
             html.should.contain(`"xcode":{"name":"Xcode","required":true,"version":"123","url":"https://apps.apple.com/gb/app/xcode/id497799835"}`);
@@ -281,8 +283,8 @@ describe('PreReqView', () => {
         it('should handle error rendering the webview', async () => {
 
             const getPreReqVersionsStub: sinon.SinonStub = mySandBox.stub(DependencyManager.instance(), 'getPreReqVersions').resolves({
-                node: {name: 'Node.js', required: true, version: undefined, url: 'https://nodejs.org/en/download/', requiredVersion: Dependencies.NODEJS_REQUIRED, requiredLabel: 'only' },
-                npm: {name: 'npm', required: true, version: '6.4.1', url: 'https://nodejs.org/en/download/', requiredVersion: Dependencies.NPM_REQUIRED, requiredLabel: '' },
+                node: {name: 'Node.js', required: true, version: undefined, url: 'https://nodejs.org/en/download/releases', requiredVersion: Dependencies.NODEJS_REQUIRED, requiredLabel: 'only' },
+                npm: {name: 'npm', required: true, version: '6.4.1', url: 'https://nodejs.org/en/download/releases', requiredVersion: Dependencies.NPM_REQUIRED, requiredLabel: '' },
                 docker: {name: 'Docker', required: true, version: undefined, url: 'https://www.docker.com/get-started', requiredVersion: Dependencies.DOCKER_REQUIRED, requiredLabel: '' },
                 dockerCompose: {name: 'Docker Compose', required: true, version: '1.15.0', url: 'https://docs.docker.com/compose/install/', requiredVersion: Dependencies.DOCKER_COMPOSE_REQUIRED, requiredLabel: '' },
                 xcode: {name: 'Xcode', required: true, version: '123', url: 'https://apps.apple.com/gb/app/xcode/id497799835', requiredVersion: undefined, requiredLabel: undefined},
@@ -345,7 +347,8 @@ describe('PreReqView', () => {
                     return;
                 },
                 onDidDispose: onDidDisposeStub,
-                onDidChangeViewState: mySandBox.stub()
+                onDidChangeViewState: mySandBox.stub(),
+                _isDisposed: false
             });
 
             const preReqView: PreReqView = new PreReqView(context);
@@ -397,7 +400,8 @@ describe('PreReqView', () => {
                     return;
                 },
                 onDidDispose: onDidDisposeStub,
-                onDidChangeViewState: mySandBox.stub()
+                onDidChangeViewState: mySandBox.stub(),
+                _isDisposed: false
             });
 
             const preReqView: PreReqView = new PreReqView(context);
@@ -457,7 +461,8 @@ describe('PreReqView', () => {
                     return;
                 },
                 onDidDispose: onDidDisposeStub,
-                onDidChangeViewState: mySandBox.stub()
+                onDidChangeViewState: mySandBox.stub(),
+                _isDisposed: false
             });
 
             const preReqView: PreReqView = new PreReqView(context);
@@ -516,7 +521,8 @@ describe('PreReqView', () => {
                     return;
                 },
                 onDidDispose: onDidDisposeStub,
-                onDidChangeViewState: mySandBox.stub()
+                onDidChangeViewState: mySandBox.stub(),
+                _isDisposed: false
             });
 
             const preReqView: PreReqView = new PreReqView(context);
@@ -569,7 +575,8 @@ describe('PreReqView', () => {
                     },
                     dispose: disposeStub,
                     onDidDispose: mySandBox.stub(),
-                    onDidChangeViewState: mySandBox.stub()
+                    onDidChangeViewState: mySandBox.stub(),
+                    _isDisposed: false
 
                 });
             }));
@@ -595,8 +602,8 @@ describe('PreReqView', () => {
         it(`should handle 'check' message where Docker for Windows has been confirmed`, async () => {
 
             const mockDependencies: any = {
-                node: {name: 'Node.js', required: true, version: '8.12.0', url: 'https://nodejs.org/en/download/', requiredVersion: Dependencies.NODEJS_REQUIRED, requiredLabel: 'only' },
-                npm: {name: 'npm', required: true, version: '6.4.1', url: 'https://nodejs.org/en/download/', requiredVersion: Dependencies.NPM_REQUIRED, requiredLabel: '' },
+                node: {name: 'Node.js', required: true, version: '10.15.3', url: 'https://nodejs.org/en/download/releases', requiredVersion: Dependencies.NODEJS_REQUIRED, requiredLabel: 'only' },
+                npm: {name: 'npm', required: true, version: '6.4.1', url: 'https://nodejs.org/en/download/releases', requiredVersion: Dependencies.NPM_REQUIRED, requiredLabel: '' },
                 docker: {name: 'Docker', required: true, version: '17.7.0', url: 'https://www.docker.com/get-started', requiredVersion: Dependencies.DOCKER_REQUIRED, requiredLabel: '' },
                 dockerCompose: {name: 'Docker Compose', required: true, version: '1.15.0', url: 'https://docs.docker.com/compose/install/', requiredVersion: Dependencies.DOCKER_COMPOSE_REQUIRED, requiredLabel: '' },
                 xcode: {name: 'Xcode', required: true, version: '123', url: 'https://apps.apple.com/gb/app/xcode/id497799835', requiredVersion: undefined, requiredLabel: undefined},
@@ -645,7 +652,8 @@ describe('PreReqView', () => {
                         return;
                     },
                     onDidDispose: mySandBox.stub(),
-                    onDidChangeViewState: mySandBox.stub()
+                    onDidChangeViewState: mySandBox.stub(),
+                    _isDisposed: false
 
                 });
             }));
@@ -684,8 +692,8 @@ describe('PreReqView', () => {
         it(`should handle 'check' message where System Requirements has been confirmed`, async () => {
 
             const mockDependencies: any = {
-                node: {name: 'Node.js', required: true, version: '8.12.0', url: 'https://nodejs.org/en/download/', requiredVersion: Dependencies.NODEJS_REQUIRED, requiredLabel: 'only' },
-                npm: {name: 'npm', required: true, version: '6.4.1', url: 'https://nodejs.org/en/download/', requiredVersion: Dependencies.NPM_REQUIRED, requiredLabel: '' },
+                node: {name: 'Node.js', required: true, version: '10.15.3', url: 'https://nodejs.org/en/download/releases', requiredVersion: Dependencies.NODEJS_REQUIRED, requiredLabel: 'only' },
+                npm: {name: 'npm', required: true, version: '6.4.1', url: 'https://nodejs.org/en/download/releases', requiredVersion: Dependencies.NPM_REQUIRED, requiredLabel: '' },
                 docker: {name: 'Docker', required: true, version: '17.7.0', url: 'https://www.docker.com/get-started', requiredVersion: Dependencies.DOCKER_REQUIRED, requiredLabel: '' },
                 dockerCompose: {name: 'Docker Compose', required: true, version: '1.15.0', url: 'https://docs.docker.com/compose/install/', requiredVersion: Dependencies.DOCKER_COMPOSE_REQUIRED, requiredLabel: '' },
                 xcode: {name: 'Xcode', required: true, version: '123', url: 'https://apps.apple.com/gb/app/xcode/id497799835', requiredVersion: undefined, requiredLabel: undefined},
@@ -708,7 +716,6 @@ describe('PreReqView', () => {
             const updateGlobalStateStub: sinon.SinonStub = mySandBox.stub(GlobalState, 'update').resolves();
 
             const expectedNewState: ExtensionData = DEFAULT_EXTENSION_DATA;
-            expectedNewState.systemRequirements = true;
 
             const expectedMockDependencies: any = mockDependencies;
             expectedMockDependencies.systemRequirements.complete = true;
@@ -733,7 +740,8 @@ describe('PreReqView', () => {
                         return;
                     },
                     onDidDispose: mySandBox.stub(),
-                    onDidChangeViewState: mySandBox.stub()
+                    onDidChangeViewState: mySandBox.stub(),
+                    _isDisposed: false
 
                 });
             }));
@@ -772,8 +780,8 @@ describe('PreReqView', () => {
         it(`should handle 'skip' message where dependencies are missing`, async () => {
 
             const mockDependencies: any = {
-                node: {name: 'Node.js', required: true, version: undefined, url: 'https://nodejs.org/en/download/', requiredVersion: Dependencies.NODEJS_REQUIRED, requiredLabel: 'only' },
-                npm: {name: 'npm', required: true, version: undefined, url: 'https://nodejs.org/en/download/', requiredVersion: Dependencies.NPM_REQUIRED, requiredLabel: '' },
+                node: {name: 'Node.js', required: true, version: undefined, url: 'https://nodejs.org/en/download/releases', requiredVersion: Dependencies.NODEJS_REQUIRED, requiredLabel: 'only' },
+                npm: {name: 'npm', required: true, version: undefined, url: 'https://nodejs.org/en/download/releases', requiredVersion: Dependencies.NPM_REQUIRED, requiredLabel: '' },
                 docker: {name: 'Docker', required: true, version: '17.7.0', url: 'https://www.docker.com/get-started', requiredVersion: Dependencies.DOCKER_REQUIRED, requiredLabel: '' },
                 dockerCompose: {name: 'Docker Compose', required: true, version: '1.15.0', url: 'https://docs.docker.com/compose/install/', requiredVersion: Dependencies.DOCKER_COMPOSE_REQUIRED, requiredLabel: '' },
                 xcode: {name: 'Xcode', required: true, version: '123', url: 'https://apps.apple.com/gb/app/xcode/id497799835', requiredVersion: undefined, requiredLabel: undefined},
@@ -813,7 +821,8 @@ describe('PreReqView', () => {
                     },
                     dispose: disposeStub,
                     onDidDispose: mySandBox.stub(),
-                    onDidChangeViewState: mySandBox.stub()
+                    onDidChangeViewState: mySandBox.stub(),
+                    _isDisposed: false
 
                 });
             }));
@@ -849,8 +858,8 @@ describe('PreReqView', () => {
         it(`should handle 'skip' message where all dependencies are installed`, async () => {
 
             const mockDependencies: any = {
-                node: {name: 'Node.js', required: true, version: '8.12.0', url: 'https://nodejs.org/en/download/', requiredVersion: Dependencies.NODEJS_REQUIRED, requiredLabel: 'only' },
-                npm: {name: 'npm', required: true, version: '6.4.1', url: 'https://nodejs.org/en/download/', requiredVersion: Dependencies.NPM_REQUIRED, requiredLabel: '' },
+                node: {name: 'Node.js', required: true, version: '10.15.3', url: 'https://nodejs.org/en/download/releases', requiredVersion: Dependencies.NODEJS_REQUIRED, requiredLabel: 'only' },
+                npm: {name: 'npm', required: true, version: '6.4.1', url: 'https://nodejs.org/en/download/releases', requiredVersion: Dependencies.NPM_REQUIRED, requiredLabel: '' },
                 docker: {name: 'Docker', required: true, version: '17.7.0', url: 'https://www.docker.com/get-started', requiredVersion: Dependencies.DOCKER_REQUIRED, requiredLabel: '' },
                 dockerCompose: {name: 'Docker Compose', required: true, version: '1.15.0', url: 'https://docs.docker.com/compose/install/', requiredVersion: Dependencies.DOCKER_COMPOSE_REQUIRED, requiredLabel: '' },
                 xcode: {name: 'Xcode', required: true, version: '123', url: 'https://apps.apple.com/gb/app/xcode/id497799835', requiredVersion: undefined, requiredLabel: undefined},
@@ -888,7 +897,8 @@ describe('PreReqView', () => {
                     },
                     dispose: disposeStub,
                     onDidDispose: mySandBox.stub(),
-                    onDidChangeViewState: mySandBox.stub()
+                    onDidChangeViewState: mySandBox.stub(),
+                    _isDisposed: false
 
                 });
             }));
@@ -944,7 +954,8 @@ describe('PreReqView', () => {
                         return;
                     },
                     onDidDispose: mySandBox.stub(),
-                    onDidChangeViewState: mySandBox.stub()
+                    onDidChangeViewState: mySandBox.stub(),
+                    _isDisposed: false
 
                 });
             }));

@@ -26,13 +26,17 @@ npm run productionFlag
 cat package.json.orig \
     | jq '.contributes.configuration.properties."ibm-blockchain-platform.ext.bypassPreReqs".default = true' \
     | jq '.contributes.configuration.properties."ibm-blockchain-platform.home.showOnStartup".default = false' \
+    | jq '.contributes.configuration.properties."ibm-blockchain-platform.home.showOnNextActivation".default = true' \
     | jq '.contributes.configuration.properties."ibm-blockchain-platform.ext.enableLocalFabric".default = false' \
     | jq '(.actualActivationEvents.onView | map("onView:" + .)) as $onView |
           (.actualActivationEvents.onCommand | map("onCommand:" + .)) as $onCommand |
           (.actualActivationEvents.other) as $other |
           .activationEvents = $onView + $onCommand + $other' \
     > package.json
-npm rebuild --update-binary --runtime=node --target=10.0.0 --target_platform=linux --target_arch=x64 --target_libc=musl
+rm -rf ./node_modules/grpc/src/node/extension_binary/*
+rm -rf ./node_modules/pkcs11js/build/Release/*
+npm rebuild grpc --update-binary --runtime=node --target=10.0.0 --target_platform=linux --target_arch=x64 --target_libc=musl
+npm rebuild grpc --update-binary --runtime=node --target=10.0.0 --target_platform=linux --target_arch=x64 --target_libc=glibc
 npm run package
 cd ${ROOT}
 export VERSION=$(jq -r .version lerna.json)
@@ -58,4 +62,9 @@ firstPublicationDate: 2019-04-19
 spec:
   extensions:
   - https://github.com/IBM-Blockchain/blockchain-vscode-extension/releases/download/v${VERSION}/ibm-blockchain-platform-che-${VERSION}.vsix
+  - https://open-vsx.org/api/vscode/markdown-language-features/1.39.1/file/vscode.markdown-language-features-1.39.1.vsix
+  - https://github.com/IBM/vscode-ibmcloud-account/releases/download/v1.0.4/ibmcloud-account-1.0.4.vsix
 EOF
+# Copy the metadata file so that it can be referred to using the following URL pattern:
+# https://github.com/IBM-Blockchain/blockchain-vscode-extension/releases/latest/download/ibm-blockchain-platform-che.yaml
+cp -f ibm-blockchain-platform-che-${VERSION}.yaml ibm-blockchain-platform-che.yaml

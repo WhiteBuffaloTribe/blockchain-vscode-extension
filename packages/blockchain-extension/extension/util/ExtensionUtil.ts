@@ -16,6 +16,7 @@ import * as fs from 'fs-extra';
 import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
+import * as semver from 'semver';
 import { ExtensionCommands } from '../../ExtensionCommands';
 import { SettingConfigurations } from '../../configurations';
 import { addGateway } from '../commands/addGatewayCommand';
@@ -101,14 +102,26 @@ import { FabricConnectionFactory } from '../fabric/FabricConnectionFactory';
 import { associateTransactionDataDirectory } from '../commands/associateTransactionDataDirectoryCommand';
 import { dissociateTransactionDataDirectory } from '../commands/dissociateTransactionDataDirectoryCommand';
 import { openReleaseNotes } from '../commands/openReleaseNotesCommand';
+import { viewPackageInformation } from '../commands/viewPackageInformationCommand';
+import { VSCodeBlockchainDockerOutputAdapter } from '../logging/VSCodeBlockchainDockerOutputAdapter';
+import { subscribeToEvent } from '../commands/subscribeToEventCommand';
+import { exportAppData } from '../commands/exportAppData';
+import { saveTutorial } from '../commands/saveTutorialCommand';
+import { manageFeatureFlags } from '../commands/manageFeatureFlags';
+import { logInAndDiscover } from '../commands/logInAndDiscoverCommand';
+import Axios from 'axios';
+import { URL } from 'url';
+import { FeatureFlagManager } from './FeatureFlags';
+import { openConsoleInBrowser } from '../commands/openConsoleInBrowserCommand';
+import { deleteExtensionDirectory } from '../commands/deleteExtensionDirectoryCommand';
 
 let blockchainGatewayExplorerProvider: BlockchainGatewayExplorerProvider;
 let blockchainPackageExplorerProvider: BlockchainPackageExplorerProvider;
 let blockchainEnvironmentExplorerProvider: BlockchainEnvironmentExplorerProvider;
 let blockchainWalletExplorerProvider: BlockchainWalletExplorerProvider;
 
-export const FABRIC_CLIENT_VERSION: string = '1.4.5';
-export const FABRIC_NETWORK_VERSION: string = '1.4.5';
+export const FABRIC_CLIENT_VERSION: string = '1.4.8';
+export const FABRIC_NETWORK_VERSION: string = '1.4.8';
 export const EXTENSION_ID: string = 'IBMBlockchain.ibm-blockchain-platform';
 
 // tslint:disable-next-line: max-classes-per-file
@@ -272,22 +285,25 @@ export class ExtensionUtil {
         context.subscriptions.push(vscode.commands.registerCommand(ExtensionCommands.REFRESH_PACKAGES, () => blockchainPackageExplorerProvider.refresh()));
         context.subscriptions.push(vscode.commands.registerCommand(ExtensionCommands.REFRESH_ENVIRONMENTS, (element: BlockchainTreeItem) => blockchainEnvironmentExplorerProvider.refresh(element)));
         context.subscriptions.push(vscode.commands.registerCommand(ExtensionCommands.START_FABRIC, (environmentRegistryEntry?: FabricEnvironmentRegistryEntry) => startFabricRuntime(environmentRegistryEntry)));
+        context.subscriptions.push(vscode.commands.registerCommand(ExtensionCommands.START_FABRIC_SHORT, (environmentRegistryEntry?: FabricEnvironmentRegistryEntry) => startFabricRuntime(environmentRegistryEntry)));
         context.subscriptions.push(vscode.commands.registerCommand(ExtensionCommands.STOP_FABRIC_SHORT, (runtimeTreeItem?: RuntimeTreeItem) => stopFabricRuntime(runtimeTreeItem)));
         context.subscriptions.push(vscode.commands.registerCommand(ExtensionCommands.STOP_FABRIC, (runtimeTreeItem?: RuntimeTreeItem) => stopFabricRuntime(runtimeTreeItem)));
         context.subscriptions.push(vscode.commands.registerCommand(ExtensionCommands.RESTART_FABRIC, (runtimeTreeItem?: RuntimeTreeItem) => restartFabricRuntime(runtimeTreeItem)));
         context.subscriptions.push(vscode.commands.registerCommand(ExtensionCommands.RESTART_FABRIC_SHORT, (runtimeTreeItem?: RuntimeTreeItem) => restartFabricRuntime(runtimeTreeItem)));
         context.subscriptions.push(vscode.commands.registerCommand(ExtensionCommands.TEARDOWN_FABRIC, (runtimeTreeItem?: RuntimeTreeItem, force: boolean = false, environmentName?: string) => teardownFabricRuntime(runtimeTreeItem, force, environmentName)));
-        context.subscriptions.push(vscode.commands.registerCommand(ExtensionCommands.TEARDOWN_FABRIC_SHORT, (runtimeTreeItem?: RuntimeTreeItem, force: boolean = false, environmentName?: string) => teardownFabricRuntime(runtimeTreeItem, force, environmentName)));        context.subscriptions.push(vscode.commands.registerCommand(ExtensionCommands.EXPORT_CONNECTION_PROFILE, (gatewayItem: GatewayTreeItem, isConnected?: boolean) => exportConnectionProfile(gatewayItem, isConnected)));
+        context.subscriptions.push(vscode.commands.registerCommand(ExtensionCommands.TEARDOWN_FABRIC_SHORT, (runtimeTreeItem?: RuntimeTreeItem, force: boolean = false, environmentName?: string) => teardownFabricRuntime(runtimeTreeItem, force, environmentName)));
+        context.subscriptions.push(vscode.commands.registerCommand(ExtensionCommands.EXPORT_CONNECTION_PROFILE, (gatewayItem: GatewayTreeItem, isConnected?: boolean) => exportConnectionProfile(gatewayItem, isConnected)));
         context.subscriptions.push(vscode.commands.registerCommand(ExtensionCommands.EXPORT_CONNECTION_PROFILE_CONNECTED, (gatewayItem: GatewayTreeItem, isConnected: boolean = true) => exportConnectionProfile(gatewayItem, isConnected)));
         context.subscriptions.push(vscode.commands.registerCommand(ExtensionCommands.DELETE_SMART_CONTRACT, (project: PackageTreeItem) => deleteSmartContractPackage(project)));
         context.subscriptions.push(vscode.commands.registerCommand(ExtensionCommands.EXPORT_SMART_CONTRACT, (project: PackageTreeItem) => exportSmartContractPackage(project)));
         context.subscriptions.push(vscode.commands.registerCommand(ExtensionCommands.IMPORT_SMART_CONTRACT, () => importSmartContractPackageCommand()));
+        context.subscriptions.push(vscode.commands.registerCommand(ExtensionCommands.VIEW_PACKAGE_INFORMATION, (project: PackageTreeItem) => viewPackageInformation(project)));
         context.subscriptions.push(vscode.commands.registerCommand(ExtensionCommands.ADD_ENVIRONMENT, () => addEnvironment()));
         context.subscriptions.push(vscode.commands.registerCommand(ExtensionCommands.DELETE_ENVIRONMENT, (environmentTreeItem: FabricEnvironmentTreeItem | FabricEnvironmentRegistryEntry, force: boolean = false) => deleteEnvironment(environmentTreeItem, force)));
         context.subscriptions.push(vscode.commands.registerCommand(ExtensionCommands.DELETE_ENVIRONMENT_SHORT, (environmentTreeItem: FabricEnvironmentTreeItem | FabricEnvironmentRegistryEntry, force: boolean = false) => deleteEnvironment(environmentTreeItem, force)));
         context.subscriptions.push(vscode.commands.registerCommand(ExtensionCommands.ASSOCIATE_IDENTITY_NODE, (environmentRegistryEntry: FabricEnvironmentRegistryEntry, node: FabricNode) => associateIdentityWithNode(false, environmentRegistryEntry, node)));
-        context.subscriptions.push(vscode.commands.registerCommand(ExtensionCommands.IMPORT_NODES_TO_ENVIRONMENT, (environmentRegistryEntry: FabricEnvironmentRegistryEntry, fromAddEnvironment: boolean = false, createMethod: string = UserInputUtil.ADD_ENVIRONMENT_FROM_NODES, informOfChanges: boolean = false, showSuccess: boolean) => importNodesToEnvironment(environmentRegistryEntry, fromAddEnvironment, createMethod, informOfChanges, showSuccess)));
-        context.subscriptions.push(vscode.commands.registerCommand(ExtensionCommands.EDIT_NODE_FILTERS, (environmentRegistryEntry: FabricEnvironmentRegistryEntry, fromAddEnvironment: boolean = false, createMethod: string = UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS, informOfChanges: boolean = false, showSuccess: boolean) => importNodesToEnvironment(environmentRegistryEntry, fromAddEnvironment, createMethod, informOfChanges, showSuccess)));
+        context.subscriptions.push(vscode.commands.registerCommand(ExtensionCommands.IMPORT_NODES_TO_ENVIRONMENT, (environmentRegistryEntry: FabricEnvironmentRegistryEntry, fromAddEnvironment: boolean = false, createMethod: string = UserInputUtil.ADD_ENVIRONMENT_FROM_NODES, informOfChanges: boolean = false, showSuccess: boolean, fromConnectEnvironment: boolean) => importNodesToEnvironment(environmentRegistryEntry, fromAddEnvironment, createMethod, informOfChanges, showSuccess, fromConnectEnvironment)));
+        context.subscriptions.push(vscode.commands.registerCommand(ExtensionCommands.EDIT_NODE_FILTERS, (environmentRegistryEntry: FabricEnvironmentRegistryEntry, fromAddEnvironment: boolean = false, createMethod: string = UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS, informOfChanges: boolean = false, showSuccess: boolean, fromConnectEnvironment: boolean) => importNodesToEnvironment(environmentRegistryEntry, fromAddEnvironment, createMethod, informOfChanges, showSuccess, fromConnectEnvironment)));
         context.subscriptions.push(vscode.commands.registerCommand(ExtensionCommands.REPLACE_ASSOCIATED_IDENTITY, async (nodeTreeItem: NodeTreeItem) => {
             if (nodeTreeItem) {
                 await associateIdentityWithNode(true, nodeTreeItem.environmentRegistryEntry, nodeTreeItem.node);
@@ -295,7 +311,7 @@ export class ExtensionUtil {
                 await associateIdentityWithNode(true, undefined, undefined);
             }
         }));
-        context.subscriptions.push(vscode.commands.registerCommand(ExtensionCommands.DELETE_NODE, (nodeTreeItem: NodeTreeItem| FabricNode) => deleteNode(nodeTreeItem)));
+        context.subscriptions.push(vscode.commands.registerCommand(ExtensionCommands.DELETE_NODE, (nodeTreeItem: NodeTreeItem | FabricNode) => deleteNode(nodeTreeItem)));
         context.subscriptions.push(vscode.commands.registerCommand(ExtensionCommands.HIDE_NODE, (nodeTreeItem: NodeTreeItem) => deleteNode(nodeTreeItem, true)));
         context.subscriptions.push(vscode.commands.registerCommand(ExtensionCommands.CONNECT_TO_ENVIRONMENT, (fabricEnvironmentRegistryEntry: FabricEnvironmentRegistryEntry, showSuccessMessage: boolean) => fabricEnvironmentConnect(fabricEnvironmentRegistryEntry, showSuccessMessage)));
         context.subscriptions.push(vscode.commands.registerCommand(ExtensionCommands.DISCONNECT_ENVIRONMENT, () => FabricEnvironmentManager.instance().disconnect()));
@@ -308,7 +324,7 @@ export class ExtensionUtil {
         context.subscriptions.push(vscode.commands.registerCommand(ExtensionCommands.UPGRADE_SMART_CONTRACT, (instantiatedChainCodeTreeItem?: InstantiatedTreeItem, channelName?: string, peerNames?: Array<string>) => upgradeSmartContract(instantiatedChainCodeTreeItem, channelName, peerNames)));
         context.subscriptions.push(vscode.commands.registerCommand(ExtensionCommands.CREATE_NEW_IDENTITY, (certificateAuthorityTreeItem?: CertificateAuthorityTreeItem) => createNewIdentity(certificateAuthorityTreeItem)));
         context.subscriptions.push(vscode.commands.registerCommand(ExtensionCommands.REFRESH_WALLETS, (element: BlockchainTreeItem) => blockchainWalletExplorerProvider.refresh(element)));
-        context.subscriptions.push(vscode.commands.registerCommand(ExtensionCommands.ADD_WALLET, (createIdentity: boolean) => addWallet(createIdentity)));
+        context.subscriptions.push(vscode.commands.registerCommand(ExtensionCommands.ADD_WALLET, (createIdentity: boolean, environmentGroup?: string) => addWallet(createIdentity, environmentGroup)));
         context.subscriptions.push(vscode.commands.registerCommand(ExtensionCommands.DEBUG_COMMAND_LIST, (commandName?: string) => debugCommandList(commandName)));
         context.subscriptions.push(vscode.commands.registerCommand(ExtensionCommands.REMOVE_WALLET, (treeItem: WalletTreeItem) => removeWallet(treeItem)));
         context.subscriptions.push(vscode.commands.registerCommand(ExtensionCommands.DELETE_IDENTITY, (treeItem: IdentityTreeItem) => deleteIdentity(treeItem)));
@@ -317,6 +333,12 @@ export class ExtensionUtil {
         context.subscriptions.push(vscode.commands.registerCommand(ExtensionCommands.EXPORT_WALLET, (treeItem?: WalletTreeItem) => exportWallet(treeItem)));
         context.subscriptions.push(vscode.commands.registerCommand(ExtensionCommands.ASSOCIATE_TRANSACTION_DATA_DIRECTORY, (treeItem: ContractTreeItem | InstantiatedTreeItem) => associateTransactionDataDirectory(treeItem)));
         context.subscriptions.push(vscode.commands.registerCommand(ExtensionCommands.DISSOCIATE_TRANSACTION_DATA_DIRECTORY, (treeItem: ContractTreeItem | InstantiatedTreeItem) => dissociateTransactionDataDirectory(treeItem)));
+        context.subscriptions.push(vscode.commands.registerCommand(ExtensionCommands.SUBSCRIBE_TO_EVENT, (treeItem: ContractTreeItem | InstantiatedTreeItem) => subscribeToEvent(treeItem)));
+        context.subscriptions.push(vscode.commands.registerCommand(ExtensionCommands.SAVE_TUTORIAL_AS_PDF, (tutorialObject: any, saveAll?: boolean, tutorialFolder?: string) => saveTutorial(tutorialObject, saveAll, tutorialFolder)));
+        context.subscriptions.push(vscode.commands.registerCommand(ExtensionCommands.EXPORT_APP_DATA, (treeItem: ContractTreeItem | InstantiatedTreeItem) => exportAppData(treeItem)));
+        context.subscriptions.push(vscode.commands.registerCommand(ExtensionCommands.LOG_IN_AND_DISCOVER, () => logInAndDiscover()));
+        context.subscriptions.push(vscode.commands.registerCommand(ExtensionCommands.OPEN_CONSOLE_IN_BROWSER, (environment?: FabricEnvironmentTreeItem ) => openConsoleInBrowser(environment)));
+        context.subscriptions.push(vscode.commands.registerCommand(ExtensionCommands.DELETE_DIRECTORY, () => deleteExtensionDirectory()));
 
         context.subscriptions.push(vscode.commands.registerCommand(ExtensionCommands.OPEN_HOME_PAGE, async () => {
             const homeView: HomeView = new HomeView(context);
@@ -342,6 +364,17 @@ export class ExtensionUtil {
             await openTransactionView(treeItem);
         }));
 
+        context.subscriptions.push(vscode.commands.registerCommand(ExtensionCommands.MANAGE_FEATURE_FLAGS, () => manageFeatureFlags()));
+
+        context.subscriptions.push(vscode.commands.registerCommand(ExtensionCommands.OPEN_NEW_INSTANCE_LINK, async () => {
+            await vscode.commands.executeCommand('vscode.open', vscode.Uri.parse('https://cloud.ibm.com/catalog/services/blockchain-platform'));
+            Reporter.instance().sendTelemetryEvent('openNewInstanceLink');
+        }));
+
+        context.subscriptions.push(vscode.commands.registerCommand(ExtensionCommands.OPEN_IBM_CLOUD_EXTENSION, async () => {
+            await vscode.commands.executeCommand('vscode.open', vscode.Uri.parse('vscode:extension/IBM.ibmcloud-account'));
+        }));
+
         // Teardown old containers and delete environments, wallets, gateways.
         await this.purgeOldRuntimes();
 
@@ -360,7 +393,7 @@ export class ExtensionUtil {
         // add homepage button in status bar
         const homePageButton: vscode.StatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left);
         homePageButton.command = ExtensionCommands.OPEN_HOME_PAGE;
-        homePageButton.text = 'Blockchain home';
+        homePageButton.text = 'Blockchain Home';
         homePageButton.tooltip = 'View Homepage';
 
         context.subscriptions.push(homePageButton);
@@ -403,7 +436,24 @@ export class ExtensionUtil {
 
                 const localFabricEnabled: boolean = ExtensionUtil.getExtensionLocalFabricSetting();
 
-                let runtimes: LocalEnvironment[] = runtimeManager.getAllRuntimes();
+                // If we're running on Eclipse Che, this is not a supported feature.
+                if (ExtensionUtil.isChe()) {
+                    if (localFabricEnabled) {
+                        outputAdapter.log(LogType.ERROR, 'Local Fabric functionality is not supported in Eclipse Che or Red Hat CodeReady Workspaces.');
+                        await vscode.workspace.getConfiguration().update(SettingConfigurations.EXTENSION_LOCAL_FABRIC, false, vscode.ConfigurationTarget.Global);
+                    }
+                    return;
+                }
+
+                const runtimes: LocalEnvironment[] = [];
+                const environmentEntries: FabricEnvironmentRegistryEntry[] = await FabricEnvironmentRegistry.instance().getAll(true, true); // Get only local entries
+                for (const entry of environmentEntries) {
+                    const _runtime: LocalEnvironment = await LocalEnvironmentManager.instance().ensureRuntime(entry.name, undefined, entry.numberOfOrgs);
+                    const isGenerated: boolean = await _runtime.isGenerated();
+                    if (isGenerated) {
+                        runtimes.push(_runtime); // We only want to teardown started or stopped runtimes.
+                    }
+                }
 
                 if (!localFabricEnabled) {
                     // Just got set to false
@@ -419,13 +469,11 @@ export class ExtensionUtil {
                             for (const runtime of runtimes) {
 
                                 const runtimeName: string = runtime.getName();
-                                const isGenerated: boolean = await runtime.isGenerated();
 
-                                // If Local Fabric is running, warn the user that it will be torndown
-                                const isRunning: boolean = await runtime.isRunning();
-
-                                if (isRunning || isGenerated) {
+                                try {
                                     await vscode.commands.executeCommand(ExtensionCommands.TEARDOWN_FABRIC, undefined, true, runtimeName);
+                                } catch (err) {
+                                    // Ignore
                                 }
 
                                 // If disabled, delete the local environment, gateway and wallet.
@@ -434,10 +482,11 @@ export class ExtensionUtil {
 
                                 runtimeManager.removeRuntime(runtimeName);
 
-                                await vscode.commands.executeCommand('setContext', 'local-fabric-enabled', false);
-
                             }
+
                         }
+
+                        await vscode.commands.executeCommand('setContext', 'local-fabric-enabled', false);
 
                     } catch (error) {
                         outputAdapter.log(LogType.ERROR, `Error whilst toggling local Fabric functionality to false: ${error.message}`, `Error whilst toggling local Fabric functionality to false: ${error.toString()}`);
@@ -471,27 +520,25 @@ export class ExtensionUtil {
                         outputAdapter.log(LogType.ERROR, `Error whilst toggling local Fabric functionality to true: ${error.message}`, `Error whilst toggling local Fabric functionality to true: ${error.toString()}`);
                     }
                 }
-                // }
-
-                runtimes = runtimeManager.getAllRuntimes();
-
-                const localRuntime: LocalEnvironment = runtimes.find((_env: LocalEnvironment) => {
-                    return _env.getName() === FabricRuntimeUtil.LOCAL_FABRIC;
-                });
 
                 const extensionData: ExtensionData = GlobalState.get();
 
-                if (!localRuntime && localFabricEnabled && !extensionData.deletedOneOrgLocalFabric) {
-                    // Just been set to true and there is no local runtime.
-                    outputAdapter.log(LogType.INFO, undefined, 'Initializing local runtime manager');
-                    try {
-                        await runtimeManager.initialize(FabricRuntimeUtil.LOCAL_FABRIC, 1);
+                if (localFabricEnabled && !extensionData.deletedOneOrgLocalFabric) {
 
-                        extensionData.createOneOrgLocalFabric = false;
-                        await GlobalState.update(extensionData);
+                    const localRuntime: LocalEnvironment = LocalEnvironmentManager.instance().getRuntime(FabricRuntimeUtil.LOCAL_FABRIC);
 
-                    } catch (error) {
-                        outputAdapter.log(LogType.ERROR, `Error initializing ${FabricRuntimeUtil.LOCAL_FABRIC}: ${error.message}`, `Error initializing ${FabricRuntimeUtil.LOCAL_FABRIC}: ${error.toString()}`);
+                    if (!localRuntime) {
+                        // Just been set to true and there is no local runtime.
+                        outputAdapter.log(LogType.INFO, undefined, 'Initializing local runtime manager');
+                        try {
+                            await runtimeManager.initialize(FabricRuntimeUtil.LOCAL_FABRIC, 1);
+
+                            extensionData.createOneOrgLocalFabric = false;
+                            await GlobalState.update(extensionData);
+
+                        } catch (error) {
+                            outputAdapter.log(LogType.ERROR, `Error initializing ${FabricRuntimeUtil.LOCAL_FABRIC}: ${error.message}`, `Error initializing ${FabricRuntimeUtil.LOCAL_FABRIC}: ${error.toString()}`);
+                        }
                     }
                 }
 
@@ -522,7 +569,27 @@ export class ExtensionUtil {
             } else {
                 // debug has stopped so set the context to false
                 await vscode.commands.executeCommand('setContext', 'blockchain-debug', false);
-                FabricDebugConfigurationProvider.environmentName = undefined;
+            }
+        });
+
+        let connectedRuntime: LocalEnvironment; // Currently connected environment entry
+
+        FabricEnvironmentManager.instance().on('connected', async () => {
+            const registryEntry: FabricEnvironmentRegistryEntry = FabricEnvironmentManager.instance().getEnvironmentRegistryEntry();
+            if (registryEntry.environmentType === EnvironmentType.LOCAL_ENVIRONMENT) {
+                connectedRuntime = LocalEnvironmentManager.instance().getRuntime(registryEntry.name);
+                const outputAdapter: VSCodeBlockchainDockerOutputAdapter = VSCodeBlockchainDockerOutputAdapter.instance(registryEntry.name);
+                connectedRuntime.startLogs(outputAdapter);
+            } else {
+                connectedRuntime = undefined;
+            }
+
+        });
+
+        FabricEnvironmentManager.instance().on('disconnected', async () => {
+            if (connectedRuntime instanceof LocalEnvironment) {
+                connectedRuntime.stopLogs();
+                connectedRuntime = undefined;
             }
         });
 
@@ -580,6 +647,7 @@ export class ExtensionUtil {
             }
         } else {
             await FabricEnvironmentRegistry.instance().delete(FabricRuntimeUtil.LOCAL_FABRIC, true);
+            LocalEnvironmentManager.instance().removeRuntime(FabricRuntimeUtil.LOCAL_FABRIC);
         }
 
         outputAdapter.log(LogType.INFO, undefined, 'Execute stored commands in the registry');
@@ -619,58 +687,75 @@ export class ExtensionUtil {
         // This needs to be done as a seperate call to make sure the dependencies have been installed
         const generatorVersion: string = dependencies['generator-fabric'];
 
-        if (extensionData.generatorVersion !== null && generatorVersion !== extensionData.generatorVersion) {
+        if (extensionData.generatorVersion && generatorVersion !== extensionData.generatorVersion) {
             // If the latest generator version is not equal to the previous used version
 
+            let teardownRuntimes: boolean = false;
             let updateGeneratorVersion: boolean = true;
 
-            const envEntries: FabricEnvironmentRegistryEntry[] = await FabricEnvironmentRegistry.instance().getAll(true);
+            const envEntries: FabricEnvironmentRegistryEntry[] = await FabricEnvironmentRegistry.instance().getAll(true, true);
 
-            const runtimeManager: LocalEnvironmentManager = LocalEnvironmentManager.instance();
+            // If the user has no local environments, we can just update the global state automatically.
+            if (envEntries.length > 0) {
+                const runtimeManager: LocalEnvironmentManager = LocalEnvironmentManager.instance();
 
-            for (const entry of envEntries) {
+                const runtimes: LocalEnvironment[] = [];
+                for (const entry of envEntries) {
 
-                // TODO JAKE: Try out this generator version if/else branch to check this works / if it is needed.
-                await runtimeManager.ensureRuntime(entry.name, undefined, entry.numberOfOrgs);
-            }
-
-            const runtimes: LocalEnvironment[] = runtimeManager.getAllRuntimes();
-
-            const response: boolean = await UserInputUtil.showConfirmationWarningMessage(`The local runtime configurations are out of date and must be torn down before updating. Do you want to teardown your local runtimes now?`);
-
-            if (response) {
-
-                for (const runtime of runtimes) {
-
-                    const generated: boolean = await runtime.isGenerated();
-
-                    const runtimeName: string = runtime.getName();
-
-                    if (generated) {
-                        // We know the user has a generated Fabric using an older version, so we should give the user the option to teardown either now or later
-
-                        const isRunning: boolean = await runtime.isRunning();
-
-                        // Teardown and remove generated Fabric
-                        await vscode.commands.executeCommand(ExtensionCommands.TEARDOWN_FABRIC, undefined, true, runtimeName);
-
-                        // Was it running before tearing it down?
-                        if (isRunning) {
-
-                            // Find environment entry of runtime
-                            const envEntry: FabricEnvironmentRegistryEntry = envEntries.find((env: FabricEnvironmentRegistryEntry) => {
-                                return env.name === runtime.getName();
-                            });
-
-                            // Start the Fabric again
-                            await vscode.commands.executeCommand(ExtensionCommands.START_FABRIC, envEntry);
-                        }
-
-                    }
+                    const localRuntime: LocalEnvironment = await runtimeManager.ensureRuntime(entry.name, undefined, entry.numberOfOrgs);
+                    runtimes.push(localRuntime);
                 }
-                // If they don't have a Fabric generated, we can update the version immediately
-            } else {
-                updateGeneratorVersion = false;
+
+                const generatorSemver: semver.SemVer = semver.coerce(generatorVersion); // Generator semver
+                const storedSemver: semver.SemVer = semver.coerce(extensionData.generatorVersion); // Stored generator semver
+
+                const generatorMajor: number = generatorSemver.major;
+                const storedMajor: number = storedSemver.major;
+                if (generatorMajor > storedMajor) {
+                    // If major changes, then we should just force teardown without asking.
+                    teardownRuntimes = true;
+                }
+
+                if (!teardownRuntimes) {
+                    teardownRuntimes = await UserInputUtil.showConfirmationWarningMessage(`The local runtime configurations are out of date and must be torn down before updating. Do you want to teardown your local runtimes now?`);
+                } else {
+                    outputAdapter.log(LogType.IMPORTANT, `A major version of the generator has been released. All local runtimes will be torn down.`);
+                }
+
+                if (teardownRuntimes) {
+
+                    for (const runtime of runtimes) {
+
+                        const generated: boolean = await runtime.isGenerated();
+
+                        const runtimeName: string = runtime.getName();
+
+                        if (generated) {
+                            // We know the user has a generated Fabric using an older version, so we should give the user the option to teardown either now or later
+
+                            const isRunning: boolean = await runtime.isRunning();
+
+                            // Teardown and remove generated Fabric
+                            await vscode.commands.executeCommand(ExtensionCommands.TEARDOWN_FABRIC, undefined, true, runtimeName);
+
+                            // Was it running before tearing it down?
+                            if (isRunning) {
+
+                                // Find environment entry of runtime
+                                const envEntry: FabricEnvironmentRegistryEntry = envEntries.find((env: FabricEnvironmentRegistryEntry) => {
+                                    return env.name === runtime.getName();
+                                });
+
+                                // Start the Fabric again
+                                await vscode.commands.executeCommand(ExtensionCommands.START_FABRIC, envEntry);
+                            }
+
+                        }
+                    }
+                    // If they don't have a Fabric generated, we can update the version immediately
+                } else {
+                    updateGeneratorVersion = false;
+                }
             }
 
             // Update the generator version
@@ -687,10 +772,26 @@ export class ExtensionUtil {
             await vscode.commands.executeCommand('setContext', 'local-fabric-enabled', false);
         }
 
-        if (extensionData.generatorVersion === null) {
+        const features: Map<string, boolean> = await FeatureFlagManager.get();
+        for (const feature of FeatureFlagManager.ALL) {
+            const hasContext: boolean = feature.getContext();
+            if (hasContext) {
+                if (!!features[feature.getName()]) {
+                    // feature enabled
+                    await vscode.commands.executeCommand('setContext', feature.getName(), true);
+                } else {
+                    await vscode.commands.executeCommand('setContext', feature.getName(), false);
+                }
+            }
+        }
+
+        if (!extensionData.generatorVersion) {
             extensionData.generatorVersion = generatorVersion;
             await GlobalState.update(extensionData);
         }
+
+        // Discover any environments and ensure they are available.
+        await this.discoverEnvironments();
     }
 
     /*
@@ -756,6 +857,8 @@ export class ExtensionUtil {
 
                 await FabricEnvironmentRegistry.instance().delete(oldName, true);
 
+                LocalEnvironmentManager.instance().removeRuntime(oldName); // Just in case.
+
                 if (oldName === FabricRuntimeUtil.OLD_LOCAL_FABRIC) {
                     await FabricGatewayRegistry.instance().delete(oldName, true);
                     await FabricWalletRegistry.instance().delete(FabricWalletUtil.OLD_LOCAL_WALLET, true);
@@ -767,6 +870,65 @@ export class ExtensionUtil {
 
     public static getExtensionLocalFabricSetting(): boolean {
         return vscode.workspace.getConfiguration().get(SettingConfigurations.EXTENSION_LOCAL_FABRIC);
+    }
+
+    public static getExtensionSaasConfigUpdatesSetting(): boolean {
+        return vscode.workspace.getConfiguration().get(SettingConfigurations.EXTENSION_SAAS_CONFIG_UPDATES);
+    }
+
+    public static async discoverEnvironments(): Promise<void> {
+
+        // First, check to see if we're running in Eclipse Che; currently
+        // we can only discover environments created by Eclipse Che.
+        if (ExtensionUtil.isChe()) {
+            await this.discoverCheEnvironments();
+        }
+
+    }
+
+    public static async discoverCheEnvironments(): Promise<void> {
+
+        // Check for a Microfab instance running within this Eclipse Che.
+        const MICROFAB_SERVICE_HOST: string = process.env['MICROFAB_SERVICE_HOST'];
+        const MICROFAB_SERVICE_PORT: string = process.env['MICROFAB_SERVICE_PORT'];
+        if (!MICROFAB_SERVICE_HOST || !MICROFAB_SERVICE_PORT) {
+            return;
+        }
+        const url: string = `http://${MICROFAB_SERVICE_HOST}:${MICROFAB_SERVICE_PORT}`;
+
+        // Try to connect to the Microfab instance.
+        try {
+            await Axios.get(new URL('/ak/api/v1/health', url).toString());
+        } catch (error) {
+            // This isn't a valid Microfab instance.
+            return;
+        }
+
+        // Determine where this environment should store any files.
+        const extensionDirectory: string = vscode.workspace.getConfiguration().get(SettingConfigurations.EXTENSION_DIRECTORY);
+        const resolvedExtensionDirectory: string = FileSystemUtil.getDirPath(extensionDirectory);
+        const environmentDirectory: string = path.join(resolvedExtensionDirectory, FileConfigurations.FABRIC_ENVIRONMENTS, 'Microfab');
+
+        // Register the Microfab instance.
+        const environmentRegistry: FabricEnvironmentRegistry = FabricEnvironmentRegistry.instance();
+        const environmentExists: boolean = await environmentRegistry.exists('Microfab');
+        const environmentRegistryEntry: FabricEnvironmentRegistryEntry = new FabricEnvironmentRegistryEntry({
+            name: 'Microfab',
+            managedRuntime: false,
+            environmentType: EnvironmentType.MICROFAB_ENVIRONMENT,
+            environmentDirectory,
+            url
+        });
+        if (!environmentExists) {
+            await environmentRegistry.add(environmentRegistryEntry);
+        } else {
+            await environmentRegistry.update(environmentRegistryEntry);
+        }
+
+    }
+
+    public static isChe(): boolean {
+        return 'CHE_WORKSPACE_ID' in process.env;
     }
 
     private static getExtension(): vscode.Extension<any> {

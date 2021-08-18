@@ -1,63 +1,41 @@
-import * as React from 'react';
+import React, { Component } from 'react';
 import './App.scss';
 import { HashRouter as Router, Route, Redirect } from 'react-router-dom';
-import TransactionPage from './components/TransactionPage/TransactionPage';
-import ISmartContract from './interfaces/ISmartContract';
-import Utils from './Utils';
+import HomePage from './components/pages/HomePage/HomePage';
+import TutorialPage from './components/pages/TutorialPage/TutorialPage';
+import ITutorialObject from './interfaces/ITutorialObject';
 
 interface AppState {
     redirectPath: string;
-    gatewayName: string;
-    smartContract: ISmartContract;
-    transactionOutput: string;
+    extensionVersion: string;
+    tutorialData: Array<{name: string, tutorials: ITutorialObject[], tutorialFolder: string, tutorialDescription?: string}>;
 }
 
-class App extends React.Component<{}, AppState> {
+class App extends Component<{}, AppState> {
     constructor(props: {}) {
         super(props);
         this.state = {
             redirectPath: '',
-            gatewayName: '',
-            smartContract: {
-                name: '',
-                version: '',
-                channel: '',
-                label: '',
-                transactions: [],
-                namespace: ''
-            },
-            transactionOutput: ''
+            extensionVersion: '',
+            tutorialData: []
         };
-        this.postMessageHandler = this.postMessageHandler.bind(this);
     }
 
     componentDidMount(): void {
         window.addEventListener('message', (event: MessageEvent) => {
-            if (event.data.output) {
-                this.setState({
-                    transactionOutput: event.data.output
-                });
-            } else {
-                this.setState({
-                    redirectPath: event.data.path,
-                    gatewayName: event.data.state ? event.data.state.gatewayName : this.state.gatewayName,
-                    smartContract: event.data.state ? event.data.state.smartContract : this.state.smartContract
-                });
-            }
-        });
-    }
-
-    postMessageHandler(command: string, data?: any): void {
-        if (data === undefined) {
-            data = {
-                gatewayName: this.state.gatewayName,
-                smartContract: this.state.smartContract,
+            const newState: any = {
+                redirectPath: event.data.path
             };
-        }
 
-        Utils.postToVSCode({
-            command: command,
-            data: data
+            if (event.data.version) {
+                newState.extensionVersion = event.data.version;
+            }
+
+            if (event.data.tutorialData) {
+                newState.tutorialData = event.data.tutorialData;
+            }
+
+            this.setState(newState);
         });
     }
 
@@ -65,14 +43,22 @@ class App extends React.Component<{}, AppState> {
         if (this.state.redirectPath === '') {
             return <div></div>;
         } else {
+            let appClass: string = '';
+            if (this.state.redirectPath === '/tutorials') {
+                appClass = 'app-container__tutorial-page';
+            }
             return (
                 <Router>
-                    <div>
-                        <Route render={(): JSX.Element => <Redirect push to={this.state.redirectPath}/>}></Route>
-                        <Route exact path='/transaction' render={(): JSX.Element =>
-                            <TransactionPage gatewayName={this.state.gatewayName} smartContract={this.state.smartContract} transactionOutput={this.state.transactionOutput}
-                                postMessageHandler={this.postMessageHandler}/>}>
-                        </Route>
+                    <div id='app-container'>
+                        <div className={appClass}>
+                            <Route render={(): JSX.Element => <Redirect push to={this.state.redirectPath}/>}></Route>
+                            <Route exact path='/home' render={(): JSX.Element =>
+                                <HomePage extensionVersion={this.state.extensionVersion}/>}>
+                            </Route>
+                            <Route exact path='/tutorials' render={(): JSX.Element =>
+                                <TutorialPage tutorialData={this.state.tutorialData}/>}>
+                            </Route>
+                        </div>
                     </div>
                 </Router>
             );

@@ -23,9 +23,12 @@ import { ExtensionCommands } from '../../ExtensionCommands';
 import { FabricEnvironmentManager } from '../fabric/environments/FabricEnvironmentManager';
 import { EnvironmentFactory } from '../fabric/environments/EnvironmentFactory';
 import Axios from 'axios';
-import { ModuleUtil } from '../util/ModuleUtil';
+import { ExtensionsInteractionUtil } from '../util/ExtensionsInteractionUtil';
+import { ExtensionUtil } from '../util/ExtensionUtil';
+import { SecureStore } from '../util/SecureStore';
+import { SecureStoreFactory } from '../util/SecureStoreFactory';
 
-export async function importNodesToEnvironment(environmentRegistryEntry: FabricEnvironmentRegistryEntry, fromAddEnvironment: boolean = false, createMethod?: string, informOfChanges: boolean = false, showSuccess: boolean = true): Promise<boolean> {
+export async function importNodesToEnvironment(environmentRegistryEntry: FabricEnvironmentRegistryEntry, fromAddEnvironment: boolean = false, createMethod?: string, informOfChanges: boolean = false, showSuccess: boolean = true, fromConnectEnvironment: boolean = false): Promise<boolean> {
     const outputAdapter: VSCodeBlockchainOutputAdapter = VSCodeBlockchainOutputAdapter.instance();
     const methodMessageString: string = createMethod !== UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS ? 'import' : 'filter';
     if (showSuccess) {
@@ -63,7 +66,7 @@ export async function importNodesToEnvironment(environmentRegistryEntry: FabricE
         }
 
         if (!fromAddEnvironment) {
-            if (environmentRegistryEntry.environmentType === EnvironmentType.OPS_TOOLS_ENVIRONMENT) {
+            if (environmentRegistryEntry.environmentType && (environmentRegistryEntry.environmentType === EnvironmentType.OPS_TOOLS_ENVIRONMENT || environmentRegistryEntry.environmentType === EnvironmentType.SAAS_OPS_TOOLS_ENVIRONMENT)) {
                 createMethod = UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS;
             } else {
                 createMethod = UserInputUtil.ADD_ENVIRONMENT_FROM_NODES;
@@ -121,6 +124,28 @@ export async function importNodesToEnvironment(environmentRegistryEntry: FabricE
                         nodes = [nodes];
                     }
 
+                    for (const node of nodes) {
+                        if (node.display_name) {
+                            node.name = node.display_name;
+                            delete node.display_name;
+                        }
+
+                        if (node.type === 'fabric-ca') {
+                            if (node.tls_cert) {
+                                node.pem = node.tls_cert;
+                                delete node.tls_cert;
+                            }
+                        } else {
+                            if (node.tls_ca_root_cert) {
+                                node.pem = node.tls_ca_root_cert;
+                                delete node.tls_ca_root_cert;
+                            }  else if (node.tls_ca_root_certs) {
+                                node.pem = node.tls_ca_root_certs.join('\n');
+                                delete node.tls_ca_root_certs;
+                            }
+                        }
+                    }
+
                     nodesToUpdate.push(...nodes);
                 } catch (error) {
                     addedAllNodes = false;
@@ -128,45 +153,76 @@ export async function importNodesToEnvironment(environmentRegistryEntry: FabricE
                 }
             }
         } else {
-            const keytar: any = ModuleUtil.getCoreNodeModule('keytar');
-            if (!keytar) {
-                throw new Error('Error importing the keytar module');
-            }
-
-            const GET_ALL_COMPONENTS: string = '/ak/api/v1/components';
+            const GET_ALL_COMPONENTS: string = '/ak/api/v2/components';
             const api: string = environmentRegistryEntry.url.replace(/\/$/, '') + GET_ALL_COMPONENTS;
             let response: any;
+            let requestOptions: any;
 
+            // establish connection to Ops Tools
             try {
-                // establish connection to Ops Tools and retrieve json file
-                const credentials: string = await keytar.getPassword('blockchain-vscode-ext', environmentRegistryEntry.url);
-                const credentialsArray: string[] = credentials.split(':');
-                if (credentialsArray.length !== 3) {
-                    throw new Error(`Unable to retrieve the stored credentials`);
+                if (environmentRegistryEntry.environmentType === EnvironmentType.SAAS_OPS_TOOLS_ENVIRONMENT) {
+                    let askUserInput: boolean;
+                    if ( fromConnectEnvironment ) {
+                        askUserInput = ExtensionUtil.getExtensionSaasConfigUpdatesSetting();
+                    } else {
+                        askUserInput = true;
+                    }
+
+                    const accessToken: string = await ExtensionsInteractionUtil.cloudAccountGetAccessToken( askUserInput );
+                    if (!accessToken) {
+                        if (fromConnectEnvironment) {
+                            throw new Error('User must be logged in to an IBM Cloud account');
+                        }
+                        return;
+                    }
+                    requestOptions = { headers: { Authorization: `Bearer ${accessToken}` } };
+                } else {
+                    const secureStore: SecureStore = await SecureStoreFactory.getSecureStore();
+
+                    const credentials: string = await secureStore.getPassword('blockchain-vscode-ext', environmentRegistryEntry.url);
+                    const credentialsArray: string[] = credentials.split(':'); // 'API key or User ID' : 'API secret or password' : rejectUnauthorized
+                    if (credentialsArray.length !== 3) {
+                        throw new Error(`Unable to retrieve the stored credentials`);
+                    }
+                    const userAuth1: string = credentialsArray[0];
+                    const userAuth2: string = credentialsArray[1];
+                    const rejectUnauthorized: boolean = credentialsArray[2] === 'true';
+                    requestOptions = {
+                        headers: { 'Content-Type': 'application/json' },
+                        auth: { username: userAuth1, password: userAuth2 }
+                    };
+                    requestOptions.httpsAgent = new https.Agent({rejectUnauthorized: rejectUnauthorized});
                 }
-                const apiKey: string = credentialsArray[0];
-                const apiSecret: string = credentialsArray[1];
-                const rejectUnauthorized: boolean = credentialsArray[2] === 'true';
-                const requestOptions: any = {
-                    headers: { 'Content-Type': 'application/json' },
-                    auth: { username: apiKey, password: apiSecret }
-                };
-                requestOptions.httpsAgent = new https.Agent({rejectUnauthorized: rejectUnauthorized});
+
+                // retrieve json file
                 response = await Axios.get(api, requestOptions);
 
+                // process node data
                 const data: any = response.data;
+                const components: any[] = data.components;
                 let filteredData: FabricNode[] = [];
 
-                if (data && data.length > 0) {
-                    filteredData = data.filter((_data: any) => _data.api_url)
+                if (components && components.length > 0) {
+                    filteredData = components.filter((_data: any) => _data.api_url)
                         .map((_data: any) => {
+                            _data.name = _data.display_name;
+                            delete _data.display_name;
+
                             if (_data.tls_cert) {
                                 _data.pem = _data.tls_cert;
                                 delete _data.tls_cert;
                             }
 
-                            _data.name = _data.display_name;
-                            delete _data.display_name;
+                            if (_data.type !== 'fabric-ca') {
+                                if (_data.tls_ca_root_cert) {
+                                    _data.pem = _data.tls_ca_root_cert;
+                                    delete _data.tls_ca_root_cert;
+                                }  else if (_data.tls_ca_root_certs) {
+                                    _data.pem = _data.tls_ca_root_certs.join('\n');
+                                    delete _data.tls_ca_root_certs;
+                                }
+                            }
+
                             return FabricNode.pruneNode(_data);
                         });
 
@@ -207,8 +263,15 @@ export async function importNodesToEnvironment(environmentRegistryEntry: FabricE
 
                 nodesToUpdate.push(...filteredData);
             } catch (error) {
-                outputAdapter.log(LogType.ERROR, `Failed to acquire nodes from ${environmentRegistryEntry.url}, with error ${error.message}`, `Failed to acquire nodes from ${environmentRegistryEntry.url}, with error ${error.toString()}`);
-                throw error;
+                if (fromConnectEnvironment) {
+                    const newError: Error = new Error(`Nodes in ${environmentRegistryEntry.name} might be out of date. Unable to connect to the IBM Blockchain Platform Console with error: ${error.message}`);
+                    outputAdapter.log(LogType.ERROR, undefined, error.toString());
+                    outputAdapter.log(LogType.WARNING, newError.message, newError.toString());
+                    throw newError;
+                } else {
+                    outputAdapter.log(LogType.ERROR, `Failed to acquire nodes from ${environmentRegistryEntry.url}, with error ${error.message}`, `Failed to acquire nodes from ${environmentRegistryEntry.url}, with error ${error.toString()}`);
+                    throw error;
+                }
             }
         }
 
@@ -295,6 +358,9 @@ export async function importNodesToEnvironment(environmentRegistryEntry: FabricE
         return addedAllNodes;
 
     } catch (error) {
+        if (fromConnectEnvironment) {
+            throw error;
+        }
         outputAdapter.log(LogType.ERROR, `Error ${methodMessageString}ing nodes: ${error.message}`);
         if (fromAddEnvironment) {
             throw error;

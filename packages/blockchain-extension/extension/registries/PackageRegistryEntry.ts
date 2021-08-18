@@ -23,6 +23,8 @@ export class PackageRegistryEntry extends RegistryEntry {
 
     public version: string;
 
+    public sizeKB: number;
+
     constructor(fields?: PackageRegistryEntry) {
         super();
         Object.assign(this, fields);

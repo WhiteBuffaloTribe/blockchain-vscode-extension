@@ -21,6 +21,7 @@ export class ExtensionCommands {
     static readonly PACKAGE_SMART_CONTRACT: string = 'aPackagesExplorer.packageSmartContractProjectEntry';
     static readonly IMPORT_SMART_CONTRACT: string = 'aPackagesExplorer.importSmartContractPackageEntry';
     static readonly CREATE_SMART_CONTRACT_PROJECT: string = 'aPackagesExplorer.createSmartContractProjectEntry';
+    static readonly VIEW_PACKAGE_INFORMATION: string = 'aPackagesExplorer.viewPackageInformationEntry';
 
     // ENVIRONMENT VIEW
     static readonly ADD_ENVIRONMENT: string = 'environmentExplorer.addEnvironmentEntry';
@@ -40,12 +41,15 @@ export class ExtensionCommands {
     static readonly RESTART_FABRIC: string = 'environmentExplorer.restartFabricRuntime';
     static readonly RESTART_FABRIC_SHORT: string = 'environmentExplorer.restartFabricRuntimeShort';
     static readonly START_FABRIC: string = 'environmentExplorer.startFabricRuntime';
+    static readonly START_FABRIC_SHORT: string = 'environmentExplorer.startFabricRuntimeShort';
     static readonly STOP_FABRIC: string = 'environmentExplorer.stopFabricRuntime';
     static readonly STOP_FABRIC_SHORT: string = 'environmentExplorer.stopFabricRuntimeShort';
     static readonly TEARDOWN_FABRIC: string = 'environmentExplorer.teardownFabricRuntime';
     static readonly TEARDOWN_FABRIC_SHORT: string = 'environmentExplorer.teardownFabricRuntimeShort';
     static readonly UPGRADE_SMART_CONTRACT: string = 'environmentExplorer.upgradeSmartContractEntry';
     static readonly CREATE_NEW_IDENTITY: string = 'environmentExplorer.createNewIdentityEntry';
+    static readonly LOG_IN_AND_DISCOVER: string = 'environmentExplorer.logInAndDiscover';
+    static readonly OPEN_CONSOLE_IN_BROWSER: string = 'environmentExplorer.openConsoleInBrowserEntry';
 
     // GATEWAY VIEW
     static readonly ADD_GATEWAY: string = 'gatewaysExplorer.addGatewayEntry';
@@ -64,6 +68,8 @@ export class ExtensionCommands {
     static readonly EXPORT_CONNECTION_PROFILE_CONNECTED: string = 'gatewaysExplorer.exportConnectionProfileConnectedEntry';
     static readonly ASSOCIATE_TRANSACTION_DATA_DIRECTORY: string = 'gatewaysExplorer.associateTransactionDataDirectoryEntry';
     static readonly DISSOCIATE_TRANSACTION_DATA_DIRECTORY: string = 'gatewaysExplorer.dissociateTransactionDataDirectoryEntry';
+    static readonly SUBSCRIBE_TO_EVENT: string = 'gatewaysExplorer.subscribeToEventEntry';
+    static readonly EXPORT_APP_DATA: string = 'gatewaysExplorer.exportAppData';
 
     // WALLET VIEW
     static readonly REFRESH_WALLETS: string = 'walletExplorer.refreshEntry';
@@ -82,4 +88,9 @@ export class ExtensionCommands {
     static readonly OPEN_TUTORIAL_PAGE: string = 'tutorial.open';
     static readonly OPEN_TRANSACTION_PAGE: string = 'transactionPage.open';
     static readonly DEBUG_COMMAND_LIST: string = 'debug.commandList';
+    static readonly SAVE_TUTORIAL_AS_PDF: string = 'tutorial.save';
+    static readonly MANAGE_FEATURE_FLAGS: string = 'manageFeatureFlags';
+    static readonly OPEN_NEW_INSTANCE_LINK: string = 'openNewInstanceLink';
+    static readonly DELETE_DIRECTORY: string = 'deleteExtensionDirectory';
+    static readonly OPEN_IBM_CLOUD_EXTENSION: string = 'openIBMCloudExtension';
 }

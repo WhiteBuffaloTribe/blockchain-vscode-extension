@@ -27,6 +27,7 @@ import { LocalEnvironment } from '../../extension/fabric/environments/LocalEnvir
 import { UserInputUtil, IncludeEnvironmentOptions } from '../../extension/commands/UserInputUtil';
 import { ManagedAnsibleEnvironment } from '../../extension/fabric/environments/ManagedAnsibleEnvironment';
 import { EnvironmentFactory } from '../../extension/fabric/environments/EnvironmentFactory';
+import { ExtensionsInteractionUtil } from '../../extension/util/ExtensionsInteractionUtil';
 
 chai.should();
 
@@ -41,6 +42,7 @@ describe('startFabricRuntime', () => {
     let blockchainLogsOutputSpy: sinon.SinonSpy;
     let commandStub: sinon.SinonStub;
     let logSpy: sinon.SinonSpy;
+    let popupStub: sinon.SinonStub;
     let localRegistryEntry: FabricEnvironmentRegistryEntry;
     let showFabricEnvironmentQuickPickBoxStub: sinon.SinonStub;
     let getEnvironmentStub: sinon.SinonStub;
@@ -66,12 +68,16 @@ describe('startFabricRuntime', () => {
 
         blockchainLogsOutputSpy = sandbox.spy(VSCodeBlockchainOutputAdapter.instance(), 'show');
 
+        sandbox.stub(ExtensionsInteractionUtil, 'cloudAccountIsLoggedIn').resolves(false);
+        sandbox.stub(ExtensionsInteractionUtil, 'cloudAccountHasSelectedAccount').resolves(false);
         const provider: BlockchainEnvironmentExplorerProvider = ExtensionUtil.getBlockchainEnvironmentExplorerProvider();
         const children: BlockchainTreeItem[] = await provider.getChildren();
-        runtimeTreeItem = children.find((child: BlockchainTreeItem) => child instanceof RuntimeTreeItem) as RuntimeTreeItem;
+        const groupChildren: BlockchainTreeItem[] = await provider.getChildren(children[0]);
+        runtimeTreeItem = groupChildren.find((child: BlockchainTreeItem) => child instanceof RuntimeTreeItem) as RuntimeTreeItem;
         commandStub = sandbox.stub(vscode.commands, 'executeCommand').callThrough();
         commandStub.withArgs(ExtensionCommands.CONNECT_TO_ENVIRONMENT).resolves();
         logSpy = sandbox.spy(VSCodeBlockchainOutputAdapter.instance(), 'log');
+        popupStub = sandbox.stub(UserInputUtil, 'failedNetworkStart').resolves();
         localRegistryEntry = await FabricEnvironmentRegistry.instance().get(FabricRuntimeUtil.LOCAL_FABRIC);
         showFabricEnvironmentQuickPickBoxStub = sandbox.stub(UserInputUtil, 'showFabricEnvironmentQuickPickBox');
         showFabricEnvironmentQuickPickBoxStub.resolves({label: FabricRuntimeUtil.LOCAL_FABRIC, data: localRegistryEntry});
@@ -81,6 +87,12 @@ describe('startFabricRuntime', () => {
     afterEach(async () => {
         sandbox.restore();
         await connectionRegistry.clear();
+    });
+
+    it('should do nothing and report a warning on Eclipse Che', async () => {
+        sandbox.stub(ExtensionUtil, 'isChe').returns(true);
+        await vscode.commands.executeCommand(ExtensionCommands.START_FABRIC);
+        logSpy.should.have.been.calledWithExactly(LogType.ERROR, sinon.match(/not supported/));
     });
 
     it('should start a Fabric runtime specified by clicking the tree', async () => {
@@ -93,7 +105,7 @@ describe('startFabricRuntime', () => {
         mockLocalRuntime.isGenerated.resolves(true);
         getEnvironmentStub.returns(mockLocalRuntime);
         await vscode.commands.executeCommand(ExtensionCommands.START_FABRIC);
-        showFabricEnvironmentQuickPickBoxStub.should.have.been.calledOnceWithExactly('Select an environment to start', false, true, true, IncludeEnvironmentOptions.ALLENV, true);
+        showFabricEnvironmentQuickPickBoxStub.should.have.been.calledOnceWithExactly('Select an environment to start', false, true, true, IncludeEnvironmentOptions.ALLENV, true, undefined, false);
         mockLocalRuntime.create.should.not.have.been.called;
         mockLocalRuntime.start.should.have.been.called.calledOnceWithExactly(VSCodeBlockchainOutputAdapter.instance());
         commandStub.should.have.been.calledWith(ExtensionCommands.REFRESH_ENVIRONMENTS);
@@ -106,7 +118,7 @@ describe('startFabricRuntime', () => {
     it('should return if user doesnt select a managed environment to start', async () => {
         showFabricEnvironmentQuickPickBoxStub.resolves(undefined);
         await vscode.commands.executeCommand(ExtensionCommands.START_FABRIC);
-        showFabricEnvironmentQuickPickBoxStub.should.have.been.calledOnceWithExactly('Select an environment to start', false, true, true, IncludeEnvironmentOptions.ALLENV, true);
+        showFabricEnvironmentQuickPickBoxStub.should.have.been.calledOnceWithExactly('Select an environment to start', false, true, true, IncludeEnvironmentOptions.ALLENV, true, undefined, false);
         getEnvironmentStub.should.not.have.been.called;
         logSpy.should.have.been.calledOnceWithExactly(LogType.INFO, undefined, 'startFabricRuntime');
     });
@@ -116,7 +128,7 @@ describe('startFabricRuntime', () => {
         mockLocalRuntime.isGenerated.resolves(false);
         getEnvironmentStub.returns(mockLocalRuntime);
         await vscode.commands.executeCommand(ExtensionCommands.START_FABRIC);
-        showFabricEnvironmentQuickPickBoxStub.should.have.been.calledOnceWithExactly('Select an environment to start', false, true, true, IncludeEnvironmentOptions.ALLENV, true);
+        showFabricEnvironmentQuickPickBoxStub.should.have.been.calledOnceWithExactly('Select an environment to start', false, true, true, IncludeEnvironmentOptions.ALLENV, true, undefined, false);
         mockLocalRuntime.create.should.have.been.calledOnce;
         mockLocalRuntime.start.should.have.been.called.calledOnceWithExactly(VSCodeBlockchainOutputAdapter.instance());
         commandStub.should.have.been.calledWith(ExtensionCommands.REFRESH_ENVIRONMENTS);
@@ -147,7 +159,7 @@ describe('startFabricRuntime', () => {
         getEnvironmentStub.returns(mockManagedEnvironment);
         showFabricEnvironmentQuickPickBoxStub.resolves({label: 'managedAnsible', data: {name: 'managedAnsible', managedRuntime: true, environmentType: EnvironmentType.ANSIBLE_ENVIRONMENT}});
         await vscode.commands.executeCommand(ExtensionCommands.START_FABRIC);
-        showFabricEnvironmentQuickPickBoxStub.should.have.been.calledOnceWithExactly('Select an environment to start', false, true, true, IncludeEnvironmentOptions.ALLENV, true);
+        showFabricEnvironmentQuickPickBoxStub.should.have.been.calledOnceWithExactly('Select an environment to start', false, true, true, IncludeEnvironmentOptions.ALLENV, true, undefined, false);
         mockManagedEnvironment.start.should.have.been.called.calledOnceWithExactly(VSCodeBlockchainOutputAdapter.instance());
         commandStub.should.have.been.calledWith(ExtensionCommands.REFRESH_ENVIRONMENTS);
         commandStub.should.have.been.calledWith(ExtensionCommands.REFRESH_GATEWAYS);
@@ -167,8 +179,23 @@ describe('startFabricRuntime', () => {
         commandStub.should.have.been.calledWith(ExtensionCommands.REFRESH_GATEWAYS);
         commandStub.should.have.been.calledWith(ExtensionCommands.REFRESH_WALLETS);
         blockchainLogsOutputSpy.should.have.been.called;
-        logSpy.getCall(0).should.have.been.calledWithExactly(LogType.INFO, undefined, 'startFabricRuntime');
-        logSpy.getCall(1).should.have.been.calledWithExactly(LogType.ERROR, `Failed to start ${mockLocalRuntime.getName()}: ${error.message}`, `Failed to start ${mockLocalRuntime.getName()}: ${error.toString()}`);
+        popupStub.should.have.been.calledWithExactly(`Failed to start ${mockLocalRuntime.getName()}: ${error.message}`,
+                    `Failed to start ${mockLocalRuntime.getName()}: ${error.toString()}`);
+    });
+
+    it('should start a local environment by right-clicking the tree item (emulating)', async () => {
+        mockLocalRuntime.isCreated.resolves(true);
+        mockLocalRuntime.isGenerated.resolves(true);
+        getEnvironmentStub.returns(mockLocalRuntime);
+        await vscode.commands.executeCommand(ExtensionCommands.START_FABRIC_SHORT, runtimeTreeItem);
+        showFabricEnvironmentQuickPickBoxStub.should.not.have.been.called;
+        mockLocalRuntime.create.should.not.have.been.called;
+        mockLocalRuntime.start.should.have.been.called.calledOnceWithExactly(VSCodeBlockchainOutputAdapter.instance());
+        commandStub.should.have.been.calledWith(ExtensionCommands.REFRESH_ENVIRONMENTS);
+        commandStub.should.have.been.calledWith(ExtensionCommands.REFRESH_GATEWAYS);
+        commandStub.should.have.been.calledWith(ExtensionCommands.REFRESH_WALLETS);
+        blockchainLogsOutputSpy.should.have.been.called;
+        logSpy.should.have.been.calledOnceWithExactly(LogType.INFO, undefined, 'startFabricRuntime');
     });
 
 });

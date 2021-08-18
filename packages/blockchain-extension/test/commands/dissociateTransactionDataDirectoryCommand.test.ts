@@ -134,7 +134,7 @@ describe('DissociateTestDataDirectoryCommand', () => {
             fabricClientConnectionMock.getMetadata.resolves(myFakeMetadata);
             const map: Map<string, Array<string>> = new Map<string, Array<string>>();
             map.set('myChannel', ['peerOne']);
-            fabricClientConnectionMock.createChannelMap.resolves(map);
+            fabricClientConnectionMock.createChannelMap.resolves({channelMap: map, v2channels: []});
             fabricConnectionManager = FabricGatewayConnectionManager.instance();
             getConnectionStub = mySandBox.stub(FabricGatewayConnectionManager.instance(), 'getConnection').returns(fabricClientConnectionMock);
 
@@ -244,6 +244,7 @@ describe('DissociateTestDataDirectoryCommand', () => {
 
             const result: FabricGatewayRegistryEntry = await FabricGatewayRegistry.instance().get('myGateway');
             result.transactionDataDirectories.should.deep.equal([]);
+
             logSpy.getCall(0).should.have.been.calledWithExactly(LogType.INFO, undefined, 'dissociateTestDataDirectory');
             logSpy.getCall(1).should.have.been.calledWithExactly(LogType.SUCCESS, `Successfully dissociated "${instantiatedSmartContract.label}" from its transaction data directory`);
         });

@@ -29,6 +29,8 @@ import { ExtensionUtil } from '../../extension/util/ExtensionUtil';
 import { EnvironmentFactory } from '../../extension/fabric/environments/EnvironmentFactory';
 import { ModuleUtilHelper } from './moduleUtilHelper';
 import { FabricEnvironmentTreeItem } from '../../extension/explorer/runtimeOps/disconnectedTree/FabricEnvironmentTreeItem';
+import { ExtensionsInteractionUtilHelper } from './extensionsInteractionUtilHelper';
+import { EnvironmentGroupTreeItem } from '../../extension/explorer/runtimeOps/EnvironmentGroupTreeItem';
 
 chai.use(sinonChai);
 chai.use(chaiAsPromised);
@@ -38,20 +40,27 @@ export class EnvironmentHelper {
     mySandBox: sinon.SinonSandbox;
     userInputUtilHelper: UserInputUtilHelper;
     moduleUtilHelper: ModuleUtilHelper;
+    extensionsInteractionUtilHelper: ExtensionsInteractionUtilHelper;
 
-    constructor(sandbox: sinon.SinonSandbox, userInputUtilHelper: UserInputUtilHelper, moduleUtilHelper: ModuleUtilHelper) {
+    constructor(sandbox: sinon.SinonSandbox, userInputUtilHelper: UserInputUtilHelper, moduleUtilHelper: ModuleUtilHelper, extensionsInteractionUtilHelper: ExtensionsInteractionUtilHelper) {
         this.mySandBox = sandbox;
         this.userInputUtilHelper = userInputUtilHelper;
         this.moduleUtilHelper = moduleUtilHelper;
+        this.extensionsInteractionUtilHelper = extensionsInteractionUtilHelper;
     }
 
-    public async createEnvironment(name: string): Promise<IBlockchainQuickPickItem<FabricNode>[]> {
+    public async createEnvironment(name: string, opsType?: string): Promise<IBlockchainQuickPickItem<FabricNode>[]> {
         let treeItem: FabricEnvironmentTreeItem;
         const blockchainEnvironmentExplorerProvider: BlockchainEnvironmentExplorerProvider = ExtensionUtil.getBlockchainEnvironmentExplorerProvider();
         // need to make sure its not showing the setup tree
 
-        const treeItems: Array<FabricEnvironmentTreeItem> = await blockchainEnvironmentExplorerProvider.getChildren() as FabricEnvironmentTreeItem[];
-        treeItem = treeItems.find((item: FabricEnvironmentTreeItem) => {
+        const treeItems: Array<EnvironmentGroupTreeItem> = await blockchainEnvironmentExplorerProvider.getChildren() as EnvironmentGroupTreeItem[];
+        const allChildren: FabricEnvironmentTreeItem[] = [];
+        for (const item of treeItems) {
+            const children: FabricEnvironmentTreeItem[] = await blockchainEnvironmentExplorerProvider.getChildren(item) as FabricEnvironmentTreeItem[];
+            allChildren.push(...children);
+        }
+        treeItem = allChildren.find((item: FabricEnvironmentTreeItem) => {
             return item.label === name;
         });
 
@@ -61,10 +70,25 @@ export class EnvironmentHelper {
             if (process.env.OPSTOOLS_FABRIC) {
                 // Connect to OpsTools and create environment without nodes
                 this.userInputUtilHelper.showQuickPickItemStub.withArgs('Select a method to add an environment').resolves({data: UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS});
-                this.userInputUtilHelper.inputBoxStub.withArgs('Enter the URL of the IBM Blockchain Platform Console you want to connect to').resolves(process.env.MAP_OPSTOOLS_URL);
-                this.userInputUtilHelper.inputBoxStub.withArgs('Enter the API key of the IBM Blockchain Platform Console you want to connect to').resolves(process.env.MAP_OPSTOOLS_KEY);
-                this.userInputUtilHelper.inputBoxStub.withArgs('Enter the API secret of the IBM Blockchain Platform Console you want to connect to').resolves(process.env.MAP_OPSTOOLS_SECRET);
-                this.userInputUtilHelper.showQuickPickItemStub.withArgs('Unable to perform certificate verification. Please choose how to proceed', [{ label: UserInputUtil.CONNECT_NO_CA_CERT_CHAIN, data: UserInputUtil.CONNECT_NO_CA_CERT_CHAIN }, { label: UserInputUtil.CANCEL_NO_CERT_CHAIN, data: UserInputUtil.CANCEL_NO_CERT_CHAIN, description: UserInputUtil.CANCEL_NO_CERT_CHAIN_DESCRIPTION }]).resolves({ label: UserInputUtil.CONNECT_NO_CA_CERT_CHAIN, data: UserInputUtil.CONNECT_NO_CA_CERT_CHAIN });
+                if (opsType === 'SaaS') {
+                    this.userInputUtilHelper.showYesNoQuickPick.withArgs('Are you connecting to an IBM Blockchain Platform service instance on IBM Cloud?').resolves(UserInputUtil.YES);
+                } else if (opsType === 'software') {
+                    this.userInputUtilHelper.showYesNoQuickPick.withArgs('Are you connecting to an IBM Blockchain Platform service instance on IBM Cloud?').resolves(UserInputUtil.NO);
+                    this.userInputUtilHelper.inputBoxStub.withArgs('Enter the URL of the IBM Blockchain Platform Console you want to connect to').resolves(process.env.MAP_OPSTOOLS_URL);
+                    this.userInputUtilHelper.inputBoxStub.withArgs('Enter the API key or the User ID of the IBM Blockchain Platform Console you want to connect to').resolves(process.env.MAP_OPSTOOLS_KEY);
+                    this.userInputUtilHelper.inputBoxStub.withArgs('Enter the API secret or the password of the IBM Blockchain Platform Console you want to connect to').resolves(process.env.MAP_OPSTOOLS_SECRET);
+                    this.userInputUtilHelper.showQuickPickItemStub.withArgs('Unable to perform certificate verification. Please choose how to proceed', [{ label: UserInputUtil.CONNECT_NO_CA_CERT_CHAIN, data: UserInputUtil.CONNECT_NO_CA_CERT_CHAIN }, { label: UserInputUtil.CANCEL_NO_CERT_CHAIN, data: UserInputUtil.CANCEL_NO_CERT_CHAIN, description: UserInputUtil.CANCEL_NO_CERT_CHAIN_DESCRIPTION }]).resolves({ label: UserInputUtil.CONNECT_NO_CA_CERT_CHAIN, data: UserInputUtil.CONNECT_NO_CA_CERT_CHAIN });
+                    const instances: any[] = await this.extensionsInteractionUtilHelper.cloudAccountGetIbpResourcesStub.getCall(this.extensionsInteractionUtilHelper.cloudAccountGetIbpResourcesStub.callCount - 1).returnValue;
+                    const instance: any = instances.find((_instance: any) => _instance.name === 'vscode');
+                    if (!instance) {
+                        throw new Error('Could not find "vscode" software instance.');
+                    }
+                    this.userInputUtilHelper.showQuickPickItemStub.withArgs('Select an IBM Blockchain Platform service instance').resolves({
+                        label: instance.name,
+                        description: instance.guid,
+                        data: instance
+                    });
+                }
                 this.userInputUtilHelper.opsToolsNodeQuickPickStub.resolves([]);
             } else if (process.env.ANSIBLE_FABRIC) {
                 this.userInputUtilHelper.showQuickPickItemStub.withArgs('Select a method to add an environment').resolves({data: UserInputUtil.ADD_ENVIRONMENT_FROM_DIR});
@@ -86,9 +110,13 @@ export class EnvironmentHelper {
 
             await vscode.commands.executeCommand(ExtensionCommands.ADD_ENVIRONMENT);
             if (process.env.OPSTOOLS_FABRIC) {
+                if (opsType === 'SaaS') {
+                    this.extensionsInteractionUtilHelper.cloudAccountGetAccessTokenStub.called.should.equal(true);
+                } else {
+                    this.moduleUtilHelper.setPasswordStub.called.should.equal(true);
+                    this.moduleUtilHelper.getPasswordStub.called.should.equal(true);
+                }
                 this.userInputUtilHelper.opsToolsNodeQuickPickStub.called.should.equal(true);
-                this.moduleUtilHelper.setPasswordStub.called.should.equal(true);
-                this.moduleUtilHelper.getPasswordStub.called.should.equal(true);
                 const call: sinon.SinonSpyCall = this.userInputUtilHelper.opsToolsNodeQuickPickStub.getCall(0);
                 return call.args[0];
             }
@@ -105,7 +133,6 @@ export class EnvironmentHelper {
                         items.add({ label: node.name, data: node });
                     }
                 }
-
                 return Array.from(items);
             }
         }

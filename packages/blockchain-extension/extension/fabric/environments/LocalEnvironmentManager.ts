@@ -21,8 +21,6 @@ import * as path from 'path';
 import * as fs from 'fs-extra';
 import { FabricEnvironmentRegistryEntry, FabricRuntimeUtil, LogType, FileSystemUtil, FabricEnvironmentRegistry } from 'ibm-blockchain-platform-common';
 import { SettingConfigurations } from '../../../configurations';
-import { FabricEnvironmentManager } from './FabricEnvironmentManager';
-import { VSCodeBlockchainDockerOutputAdapter } from '../../logging/VSCodeBlockchainDockerOutputAdapter';
 import { LocalEnvironment } from './LocalEnvironment';
 
 export class LocalEnvironmentManager {
@@ -38,14 +36,6 @@ export class LocalEnvironmentManager {
     private runtimes: Map<string, LocalEnvironment> = new Map();
 
     private constructor() {
-    }
-
-    public getAllRuntimes(): LocalEnvironment[] {
-        const runtimes: LocalEnvironment[] = [];
-        for (const runtime of this.runtimes.values()) {
-            runtimes.push(runtime);
-        }
-        return runtimes;
     }
 
     public updateRuntime(name: string, runtime: LocalEnvironment): void {
@@ -152,22 +142,6 @@ export class LocalEnvironmentManager {
             await runtime.create();
         }
 
-        let _runtime: LocalEnvironment; // Currently connected environment entry
-
-        FabricEnvironmentManager.instance().on('connected', async () => {
-            const registryEntry: FabricEnvironmentRegistryEntry = FabricEnvironmentManager.instance().getEnvironmentRegistryEntry();
-            _runtime = this.getRuntime(registryEntry.name);
-            if (_runtime instanceof LocalEnvironment) {
-                const outputAdapter: VSCodeBlockchainDockerOutputAdapter = VSCodeBlockchainDockerOutputAdapter.instance(registryEntry.name);
-                _runtime.startLogs(outputAdapter);
-            }
-        });
-
-        FabricEnvironmentManager.instance().on('disconnected', async () => {
-            if (_runtime instanceof LocalEnvironment) {
-                _runtime.stopLogs();
-            }
-        });
     }
 
     public async migrate(oldVersion: string): Promise<void> {
@@ -243,7 +217,8 @@ export class LocalEnvironmentManager {
     }
 
     private async migrateRuntimeConfiguration(oldRuntimeSetting: any): Promise<void> {
-        const runtimeObj: any = vscode.workspace.getConfiguration().get(SettingConfigurations.FABRIC_RUNTIME); // {} || {ports: {}}
+        const _runtimeObj: any = vscode.workspace.getConfiguration().get(SettingConfigurations.FABRIC_RUNTIME); // {} || {ports: {}}
+        const runtimeObj: any = JSON.parse(JSON.stringify(_runtimeObj));
         if (oldRuntimeSetting && !runtimeObj.ports && !runtimeObj[FabricRuntimeUtil.LOCAL_FABRIC]) {
 
             const runtimeToCopy: any = {

@@ -19,7 +19,7 @@ import * as chaiAsPromised from 'chai-as-promised';
 import * as vscode from 'vscode';
 import { LocalEnvironmentManager } from '../../extension/fabric/environments/LocalEnvironmentManager';
 import { ExtensionCommands } from '../../ExtensionCommands';
-import { FabricRuntimeUtil, FabricNode, FabricEnvironmentRegistryEntry, FabricEnvironmentRegistry } from 'ibm-blockchain-platform-common';
+import { FabricRuntimeUtil, FabricNode, FabricEnvironmentRegistryEntry, FabricEnvironmentRegistry, EnvironmentType } from 'ibm-blockchain-platform-common';
 import { LocalEnvironment } from '../../extension/fabric/environments/LocalEnvironment';
 import { IBlockchainQuickPickItem } from '../../extension/commands/UserInputUtil';
 import { TimerUtil } from '../../extension/util/TimerUtil';
@@ -72,14 +72,14 @@ module.exports = function(): any {
         await this.fabricEnvironmentHelper.connectToEnvironment(environment);
     });
 
-    this.Given("an environment '{string}' exists", this.timeout, async (environmentName: string) => {
-        opsToolsAllNodesQuickPick = await this.fabricEnvironmentHelper.createEnvironment(environmentName);
+    this.Given(/an environment '(.*?)' ?(?:of type '(.*?)')? exists/, this.timeout, async (environmentName: string, opsType: string) => {
+        opsToolsAllNodesQuickPick = await this.fabricEnvironmentHelper.createEnvironment(environmentName, opsType);
         this.environmentName = environmentName;
     });
 
     this.Given('the environment is setup', this.timeout, async () => {
         const nodes: string[] = ['ca.example.com', 'orderer.example.com', 'peer0.org1.example.com'];
-        const wallet: string = 'myWallet';
+        const wallet: string = this.environmentName === 'myFabric2' ? 'myWallet2' : 'myWallet';
         let identity: string;
         for (const node of nodes) {
             if (node === 'ca.example.com') {
@@ -92,15 +92,25 @@ module.exports = function(): any {
         }
     });
 
-    this.Given('the opstools environment is setup', this.timeout, async () => {
+    this.Given("the '{string}' opstools environment is setup", this.timeout, async (environmentType: string) => {
         const nodeMap: Map<string, string> = new Map<string, string>();
-        nodeMap.set('Ordering Service CA', 'OrderingServiceCAAdmin');
-        nodeMap.set('Ordering Service_1', 'OrderingServiceMSPAdmin');
-        nodeMap.set('Org1 CA', 'Org1CAAdmin');
-        nodeMap.set('Org2 CA', 'Org2CAAdmin');
-        nodeMap.set('Peer Org1', 'Org1MSPAdmin');
-        nodeMap.set('Peer Org2', 'Org2MSPAdmin');
-        const wallet: string = 'opsToolsWallet';
+        let wallet: string;
+        if (environmentType === 'software') {
+            nodeMap.set('Ordering Service CA', 'OrderingServiceCAAdmin');
+            nodeMap.set('Ordering Service_1', 'OrderingServiceMSPAdmin');
+            nodeMap.set('Org1 CA', 'Org1CAAdmin');
+            nodeMap.set('Org2 CA', 'Org2CAAdmin');
+            nodeMap.set('Peer Org1', 'Org1MSPAdmin');
+            nodeMap.set('Peer Org2', 'Org2MSPAdmin');
+            wallet = 'opsToolsWallet';
+        } else if (environmentType === 'SaaS') {
+            nodeMap.set('Ordering Service CA', 'SaaSOrderingServiceCAAdmin');
+            nodeMap.set('Ordering Service_1', 'SaaSOrderingServiceMSPAdmin');
+            nodeMap.set('Org1 CA', 'SaaSOrg1CAAdmin');
+            nodeMap.set('Peer Org1', 'SaaSOrg1MSPAdmin');
+            wallet = 'SaaSOpsToolsWallet';
+        }
+
         for (const node of nodeMap.entries()) {
             await this.fabricEnvironmentHelper.associateNodeWithIdentitiy(this.environmentName, node[0], node[1], wallet);
         }
@@ -111,12 +121,21 @@ module.exports = function(): any {
 
     });
 
+    this.Given('there are no IBM Cloud environments', this.timeout, async () => {
+        const environments: FabricEnvironmentRegistryEntry[] = await FabricEnvironmentRegistry.instance().getAll();
+        for (const env of environments) {
+            if (env.environmentType === EnvironmentType.SAAS_OPS_TOOLS_ENVIRONMENT) {
+                await this.fabricEnvironmentHelper.deleteEnvironment(env.name);
+            }
+        }
+    });
+
     /**
      * When
      */
 
-    this.When("I create an environment '{string}'", this.timeout, async (environmentName: string) => {
-        opsToolsAllNodesQuickPick = await this.fabricEnvironmentHelper.createEnvironment(environmentName);
+    this.When(/I create an environment '(.*?)' ?(?:of type '(.*?)')?/, this.timeout, async (environmentName: string, opsType: string) => {
+        opsToolsAllNodesQuickPick = await this.fabricEnvironmentHelper.createEnvironment(environmentName, opsType);
     });
 
     this.When("I associate identity '{string}' in wallet '{string}' with node '{string}'", this.timeout, async (identity: string, wallet: string, node: string) => {
@@ -166,5 +185,9 @@ module.exports = function(): any {
     this.When("I edit filters and import all nodes to environment '{string}'", this.timeout, async (environmentName: string) => {
         await this.fabricEnvironmentHelper.editNodeFilters(opsToolsAllNodesQuickPick, environmentName);
 
+    });
+
+    this.When('I log in to IBM Cloud', this.timeout, async () => {
+        await vscode.commands.executeCommand(ExtensionCommands.LOG_IN_AND_DISCOVER);
     });
 };

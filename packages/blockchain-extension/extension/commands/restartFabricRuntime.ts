@@ -23,10 +23,18 @@ import { LocalEnvironment } from '../fabric/environments/LocalEnvironment';
 import { RuntimeTreeItem } from '../explorer/runtimeOps/disconnectedTree/RuntimeTreeItem';
 import { UserInputUtil, IBlockchainQuickPickItem, IncludeEnvironmentOptions } from './UserInputUtil';
 import { EnvironmentFactory } from '../fabric/environments/EnvironmentFactory';
+import { ExtensionUtil } from '../util/ExtensionUtil';
 
 export async function restartFabricRuntime(runtimeTreeItem?: RuntimeTreeItem): Promise<void> {
     const outputAdapter: VSCodeBlockchainOutputAdapter = VSCodeBlockchainOutputAdapter.instance();
     outputAdapter.log(LogType.INFO, undefined, 'restartFabricRuntime');
+
+    // If we're running on Eclipse Che, this is not a supported feature.
+    if (ExtensionUtil.isChe()) {
+        outputAdapter.log(LogType.ERROR, 'Local Fabric functionality is not supported in Eclipse Che or Red Hat CodeReady Workspaces.');
+        return;
+    }
+
     let registryEntry: FabricEnvironmentRegistryEntry;
     if (!runtimeTreeItem) {
 
@@ -36,7 +44,7 @@ export async function restartFabricRuntime(runtimeTreeItem?: RuntimeTreeItem): P
         }
 
         if ((registryEntry && !registryEntry.managedRuntime) || !registryEntry) {
-            const chosenEnvironment: IBlockchainQuickPickItem<FabricEnvironmentRegistryEntry> = await UserInputUtil.showFabricEnvironmentQuickPickBox('Select an environment to restart', false, true, true, IncludeEnvironmentOptions.ALLENV, true) as IBlockchainQuickPickItem<FabricEnvironmentRegistryEntry>;
+            const chosenEnvironment: IBlockchainQuickPickItem<FabricEnvironmentRegistryEntry> = await UserInputUtil.showFabricEnvironmentQuickPickBox('Select an environment to restart', false, true, true, IncludeEnvironmentOptions.ALLENV, true, undefined, true) as IBlockchainQuickPickItem<FabricEnvironmentRegistryEntry>;
             if (!chosenEnvironment) {
                 return;
             }
@@ -49,27 +57,28 @@ export async function restartFabricRuntime(runtimeTreeItem?: RuntimeTreeItem): P
     }
     const runtime: LocalEnvironment | ManagedAnsibleEnvironment = EnvironmentFactory.getEnvironment(registryEntry) as LocalEnvironment | ManagedAnsibleEnvironment;
 
-    await vscode.window.withProgress({
-        location: vscode.ProgressLocation.Notification,
-        title: 'IBM Blockchain Platform Extension',
-        cancellable: false
-    }, async (progress: vscode.Progress<{ message: string }>) => {
-        progress.report({ message: `Restarting Fabric runtime ${runtime.getName()}` });
+    try {
+        await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: 'IBM Blockchain Platform Extension',
+            cancellable: false
+        }, async (progress: vscode.Progress<{ message: string }>) => {
+            progress.report({ message: `Restarting Fabric runtime ${runtime.getName()}` });
 
-        const connectedGatewayRegistry: FabricGatewayRegistryEntry = await FabricGatewayConnectionManager.instance().getGatewayRegistryEntry();
-        if (connectedGatewayRegistry && connectedGatewayRegistry.fromEnvironment === registryEntry.name) {
-            await vscode.commands.executeCommand(ExtensionCommands.DISCONNECT_GATEWAY);
-        }
+            const connectedGatewayRegistry: FabricGatewayRegistryEntry = await FabricGatewayConnectionManager.instance().getGatewayRegistryEntry();
+            if (connectedGatewayRegistry && connectedGatewayRegistry.fromEnvironment === registryEntry.name) {
+                await vscode.commands.executeCommand(ExtensionCommands.DISCONNECT_GATEWAY);
+            }
 
-        const connectedEnvironmentRegistry: FabricEnvironmentRegistryEntry = FabricEnvironmentManager.instance().getEnvironmentRegistryEntry();
-        if (connectedEnvironmentRegistry && registryEntry.name === connectedEnvironmentRegistry.name) {
-            await vscode.commands.executeCommand(ExtensionCommands.DISCONNECT_ENVIRONMENT);
-        }
-
-        try {
+            const connectedEnvironmentRegistry: FabricEnvironmentRegistryEntry = FabricEnvironmentManager.instance().getEnvironmentRegistryEntry();
+            if (connectedEnvironmentRegistry && registryEntry.name === connectedEnvironmentRegistry.name) {
+                await vscode.commands.executeCommand(ExtensionCommands.DISCONNECT_ENVIRONMENT);
+            }
             await runtime.restart(outputAdapter);
-        } catch (error) {
-            outputAdapter.log(LogType.ERROR, `Failed to restart ${runtime.getName()}: ${error.message}`, `Failed to restart ${runtime.getName()}: ${error.toString()}`);
-        }
-    });
+        });
+    }
+    catch (error)
+    {
+        await UserInputUtil.failedNetworkStart(`Failed to restart ${runtime.getName()}: ${error.message}`, `Failed to restart ${runtime.getName()}: ${error.toString()}`);
+    }
 }

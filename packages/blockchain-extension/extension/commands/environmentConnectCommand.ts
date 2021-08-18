@@ -27,6 +27,7 @@ import { EnvironmentFactory } from '../fabric/environments/EnvironmentFactory';
 
 export async function fabricEnvironmentConnect(fabricEnvironmentRegistryEntry: FabricEnvironmentRegistryEntry, showSuccess: boolean = true): Promise<void> {
     const outputAdapter: VSCodeBlockchainOutputAdapter = VSCodeBlockchainOutputAdapter.instance();
+    let startRefresh: boolean = true;
     if (showSuccess) {
         outputAdapter.log(LogType.INFO, undefined, `connecting to fabric environment`);
     }
@@ -66,7 +67,7 @@ export async function fabricEnvironmentConnect(fabricEnvironmentRegistryEntry: F
 
         let nodes: FabricNode[] = await fabricEnvironment.getNodes();
 
-        if (fabricEnvironmentRegistryEntry.environmentType === EnvironmentType.OPS_TOOLS_ENVIRONMENT) {
+        if (fabricEnvironmentRegistryEntry.environmentType === EnvironmentType.OPS_TOOLS_ENVIRONMENT || fabricEnvironmentRegistryEntry.environmentType === EnvironmentType.SAAS_OPS_TOOLS_ENVIRONMENT) {
             let informOfChanges: boolean = true;
             if (nodes.length === 0) {
                 const importNodes: boolean = await UserInputUtil.showConfirmationWarningMessage(`Problem connecting to environment ${fabricEnvironmentRegistryEntry.name}: no visible nodes. Would you like to filter nodes?`);
@@ -75,7 +76,15 @@ export async function fabricEnvironmentConnect(fabricEnvironmentRegistryEntry: F
                 }
                 informOfChanges = false;
             }
-            await vscode.commands.executeCommand(ExtensionCommands.EDIT_NODE_FILTERS, fabricEnvironmentRegistryEntry, false, UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS, informOfChanges, showSuccess);
+            try {
+                await vscode.commands.executeCommand(ExtensionCommands.EDIT_NODE_FILTERS, fabricEnvironmentRegistryEntry, false, UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS, informOfChanges, showSuccess, true);
+            } catch (error) {
+                if (error.message.match(/might be out of date/) !== null) {
+                    startRefresh = false;
+                } else {
+                    throw error;
+                }
+            }
             nodes = await fabricEnvironment.getNodes();
             if (nodes.length === 0) {
                 FabricEnvironmentManager.instance().disconnect();
@@ -97,15 +106,20 @@ export async function fabricEnvironmentConnect(fabricEnvironmentRegistryEntry: F
 
         await connection.connect(nodes);
 
+        let createChannelsResult: {channelMap: Map<string, string[]>, v2channels: string[]};
         try {
-            await connection.createChannelMap();
+            createChannelsResult = await connection.createChannelMap();
         } catch (error) {
             outputAdapter.log(LogType.ERROR, `Error connecting to environment ${fabricEnvironment.getName()}: ${error.message}`, `Error connecting to environment ${fabricEnvironment.getName()}: ${error.toString()}`);
             await vscode.commands.executeCommand(ExtensionCommands.DISCONNECT_ENVIRONMENT);
             return;
         }
 
-        FabricEnvironmentManager.instance().connect(connection, fabricEnvironmentRegistryEntry, ConnectedState.CONNECTING);
+        if (createChannelsResult.v2channels.length !== 0) {
+            VSCodeBlockchainOutputAdapter.instance().log(LogType.WARNING, `Detected channels without V1_4 capabilities enabled: ${createChannelsResult.v2channels.join(', ')}.`);
+        }
+
+        FabricEnvironmentManager.instance().connect(connection, fabricEnvironmentRegistryEntry, ConnectedState.CONNECTING, startRefresh);
 
         const environmentName: string = fabricEnvironment.getName();
 
@@ -119,8 +133,19 @@ export async function fabricEnvironmentConnect(fabricEnvironmentRegistryEntry: F
             environmentData = 'user environment';
         }
 
+        let envType: string;
+        if (fabricEnvironmentRegistryEntry.environmentType === EnvironmentType.ENVIRONMENT) {
+            envType = 'Fabric Network created via JSON files';
+        } else if (fabricEnvironmentRegistryEntry.environmentType === EnvironmentType.ANSIBLE_ENVIRONMENT) {
+            envType = 'Network created using Ansible';
+        } else if (fabricEnvironmentRegistryEntry.environmentType === EnvironmentType.OPS_TOOLS_ENVIRONMENT || fabricEnvironmentRegistryEntry.environmentType === EnvironmentType.SAAS_OPS_TOOLS_ENVIRONMENT) {
+            envType = 'Ops Tools network';
+        } else {
+            envType = 'Local network';
+        }
+
         const isIBMer: boolean = ExtensionUtil.checkIfIBMer();
-        Reporter.instance().sendTelemetryEvent('fabricEnvironmentConnectCommand', { environmentData: environmentData, connectEnvironmentIBM: isIBMer + '' });
+        Reporter.instance().sendTelemetryEvent('fabricEnvironmentConnectCommand', { environmentData: environmentData, connectEnvironmentIBM: isIBMer + '', environmentType: envType });
     } catch (error) {
         outputAdapter.log(LogType.ERROR, `Cannot connect to environment: ${error.message}`, `Cannot connect to environment: ${error.toString()}`);
         return;

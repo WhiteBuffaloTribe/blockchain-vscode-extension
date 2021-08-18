@@ -18,16 +18,31 @@ import { ExtensionCommands } from '../../ExtensionCommands';
 import { LocalEnvironment } from '../fabric/environments/LocalEnvironment';
 import { ManagedAnsibleEnvironment } from '../fabric/environments/ManagedAnsibleEnvironment';
 import { IBlockchainQuickPickItem, UserInputUtil, IncludeEnvironmentOptions } from './UserInputUtil';
-import { LogType, FabricEnvironmentRegistryEntry, FabricRuntimeUtil } from 'ibm-blockchain-platform-common';
+import { LogType, FabricEnvironmentRegistryEntry, EnvironmentType } from 'ibm-blockchain-platform-common';
 import { TimerUtil } from '../util/TimerUtil';
 import { EnvironmentFactory } from '../fabric/environments/EnvironmentFactory';
+import { RuntimeTreeItem } from '../explorer/runtimeOps/disconnectedTree/RuntimeTreeItem';
+import { ExtensionUtil } from '../util/ExtensionUtil';
 
-export async function startFabricRuntime(registryEntry?: FabricEnvironmentRegistryEntry): Promise<void> {
+async function update() {
+    await TimerUtil.sleep(1000);
+    await vscode.commands.executeCommand(ExtensionCommands.REFRESH_ENVIRONMENTS);
+    await vscode.commands.executeCommand(ExtensionCommands.REFRESH_GATEWAYS);
+    await vscode.commands.executeCommand(ExtensionCommands.REFRESH_WALLETS);
+}
+
+export async function startFabricRuntime(registryEntry?: RuntimeTreeItem | FabricEnvironmentRegistryEntry): Promise<void> {
     const outputAdapter: VSCodeBlockchainOutputAdapter = VSCodeBlockchainOutputAdapter.instance();
     outputAdapter.log(LogType.INFO, undefined, 'startFabricRuntime');
 
+    // If we're running on Eclipse Che, this is not a supported feature.
+    if (ExtensionUtil.isChe()) {
+        outputAdapter.log(LogType.ERROR, 'Local Fabric functionality is not supported in Eclipse Che or Red Hat CodeReady Workspaces.');
+        return;
+    }
+
     if (!registryEntry) {
-        const chosenEnvironment: IBlockchainQuickPickItem<FabricEnvironmentRegistryEntry> = await UserInputUtil.showFabricEnvironmentQuickPickBox('Select an environment to start', false, true, true, IncludeEnvironmentOptions.ALLENV, true) as IBlockchainQuickPickItem<FabricEnvironmentRegistryEntry>;
+        const chosenEnvironment: IBlockchainQuickPickItem<FabricEnvironmentRegistryEntry> = await UserInputUtil.showFabricEnvironmentQuickPickBox('Select an environment to start', false, true, true, IncludeEnvironmentOptions.ALLENV, true, undefined, false) as IBlockchainQuickPickItem<FabricEnvironmentRegistryEntry>;
         if (!chosenEnvironment) {
             return;
         }
@@ -36,19 +51,24 @@ export async function startFabricRuntime(registryEntry?: FabricEnvironmentRegist
 
     }
 
+    if (registryEntry instanceof RuntimeTreeItem) {
+        // Get entry from tree item
+        registryEntry = registryEntry.environmentRegistryEntry;
+    }
+
     const runtime: LocalEnvironment | ManagedAnsibleEnvironment = EnvironmentFactory.getEnvironment(registryEntry) as LocalEnvironment | ManagedAnsibleEnvironment;
 
-    if (registryEntry.name === FabricRuntimeUtil.LOCAL_FABRIC) {
+    if (registryEntry.environmentType === EnvironmentType.LOCAL_ENVIRONMENT) {
         VSCodeBlockchainOutputAdapter.instance().show();
     }
 
-    await vscode.window.withProgress({
-        location: vscode.ProgressLocation.Notification,
-        title: 'IBM Blockchain Platform Extension',
-        cancellable: false
-    }, async (progress: vscode.Progress<{ message: string }>) => {
-        progress.report({ message: `Starting Fabric runtime ${runtime.getName()}` });
-        try {
+    try {
+        await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: 'IBM Blockchain Platform Extension',
+            cancellable: false
+        }, async (progress: vscode.Progress<{ message: string }>) => {
+            progress.report({ message: `Starting Fabric runtime ${runtime.getName()}` });
 
             if (runtime instanceof LocalEnvironment) {
                 const isCreated: boolean = await runtime.isCreated();
@@ -57,14 +77,12 @@ export async function startFabricRuntime(registryEntry?: FabricEnvironmentRegist
                 }
             }
             await runtime.start(outputAdapter);
-        } catch (error) {
-            outputAdapter.log(LogType.ERROR, `Failed to start ${runtime.getName()}: ${error.message}`, `Failed to start ${runtime.getName()}: ${error.toString()}`);
-        }
-
-        await TimerUtil.sleep(1000);
-
-        await vscode.commands.executeCommand(ExtensionCommands.REFRESH_ENVIRONMENTS);
-        await vscode.commands.executeCommand(ExtensionCommands.REFRESH_GATEWAYS);
-        await vscode.commands.executeCommand(ExtensionCommands.REFRESH_WALLETS);
-    });
+            await update();
+        });
+    }
+    catch (error)
+    {
+        await update();
+        await UserInputUtil.failedNetworkStart(`Failed to start ${runtime.getName()}: ${error.message}`, `Failed to start ${runtime.getName()}: ${error.toString()}`);
+    }
 }

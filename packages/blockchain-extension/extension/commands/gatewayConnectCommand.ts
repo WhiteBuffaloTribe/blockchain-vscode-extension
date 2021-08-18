@@ -41,7 +41,7 @@ export async function gatewayConnect(gatewayRegistryEntry: FabricGatewayRegistry
         gatewayRegistryEntry = chosenEntry.data;
     }
 
-    const gatewayName: string = gatewayRegistryEntry.displayName ? gatewayRegistryEntry.displayName : gatewayRegistryEntry.name;
+    const gatewayName: string = gatewayRegistryEntry.name;
 
     const environmentName: string = gatewayRegistryEntry.fromEnvironment;
     let environmentEntry: FabricEnvironmentRegistryEntry;
@@ -119,6 +119,12 @@ export async function gatewayConnect(gatewayRegistryEntry: FabricGatewayRegistry
         await connection.connect(wallet, identityName, timeout);
         connection.identityName = identityName;
         FabricGatewayConnectionManager.instance().connect(connection, gatewayRegistryEntry, walletRegistryEntry);
+
+        // Inform the user if any of the channels is does not have v2_0 capability enabled.
+        const createChannelsResult: {channelMap: Map<string, Array<string>>, v2channels: Array<string>} = await connection.createChannelMap();
+        if (createChannelsResult.v2channels.length !== 0) {
+            VSCodeBlockchainOutputAdapter.instance().log(LogType.WARNING, `Detected channels without V1_4 capabilities enabled: ${createChannelsResult.v2channels.join(', ')}.`);
+        }
 
         outputAdapter.log(LogType.SUCCESS, `Connecting to ${gatewayName}`);
         if (!runtimeData) {

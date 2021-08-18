@@ -238,6 +238,7 @@ describe('AddGatewayCommand', () => {
             gateways[0].should.deep.equal({
                 name: 'myGateway',
                 connectionProfilePath,
+                environmentGroup: 'myEnv',
                 associatedWallet: 'Org1'
             });
             executeCommandSpy.should.have.been.calledWith(ExtensionCommands.REFRESH_GATEWAYS);
@@ -342,6 +343,7 @@ describe('AddGatewayCommand', () => {
             gateways[0].should.deep.equal({
                 name: 'myGateway',
                 connectionProfilePath,
+                environmentGroup: 'myEnv',
                 associatedWallet: 'Org1'
             });
 

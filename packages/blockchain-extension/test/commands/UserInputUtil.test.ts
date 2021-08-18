@@ -31,6 +31,9 @@ import { ExtensionCommands } from '../../ExtensionCommands';
 import { FabricEnvironmentConnection } from 'ibm-blockchain-platform-environment-v1';
 import { FabricCertificate, FabricEnvironmentRegistry, FabricRuntimeUtil, FabricWalletRegistry, FabricWalletRegistryEntry, FabricNode, FabricNodeType, FabricEnvironmentRegistryEntry, LogType, EnvironmentType, FabricGatewayRegistry, FabricGatewayRegistryEntry, FabricEnvironment } from 'ibm-blockchain-platform-common';
 import { FabricEnvironmentManager } from '../../extension/fabric/environments/FabricEnvironmentManager';
+import { LocalEnvironment } from '../../extension/fabric/environments/LocalEnvironment';
+import { LocalEnvironmentManager } from '../../extension/fabric/environments/LocalEnvironmentManager';
+import { ExtensionUtil } from '../../extension/util/ExtensionUtil';
 
 chai.use(sinonChai);
 const should: Chai.Should = chai.should();
@@ -125,13 +128,13 @@ describe('UserInputUtil', () => {
         fabricRuntimeConnectionStub.getAllCertificateAuthorityNames.returns(['ca.example.cake.com', 'ca1.example.cake.com']);
         const map: Map<string, Array<string>> = new Map<string, Array<string>>();
         map.set('channelOne', ['myPeerOne', 'myPeerTwo']);
-        fabricRuntimeConnectionStub.createChannelMap.resolves(map);
+        fabricRuntimeConnectionStub.createChannelMap.resolves({channelMap: map, v2channels: []});
         const chaincodeMapTwo: Map<string, Array<string>> = new Map<string, Array<string>>();
 
         fabricRuntimeConnectionStub.getInstantiatedChaincode.withArgs('channelTwo').resolves(chaincodeMapTwo);
 
         fabricClientConnectionStub = mySandBox.createStubInstance(FabricGatewayConnection);
-        fabricClientConnectionStub.createChannelMap.resolves(map);
+        fabricClientConnectionStub.createChannelMap.resolves({channelMap: map, v2channels: []});
         fabricClientConnectionStub.getInstantiatedChaincode.withArgs('channelOne').resolves([{ name: 'biscuit-network', channel: 'channelOne', version: '0.0.1' }, { name: 'cake-network', channel: 'channelOne', version: '0.0.3' }]);
         getConnectionStub = mySandBox.stub(fabricConnectionManager, 'getConnection').returns(fabricClientConnectionStub);
         getConnectedGatewayEntryStub = mySandBox.stub(fabricConnectionManager, 'getGatewayRegistryEntry').resolves(gatewayEntryOne);
@@ -251,6 +254,89 @@ describe('UserInputUtil', () => {
             });
         });
 
+        it('should only show local environments', async () => {
+            quickPickStub.resolves([]);
+
+            await FabricEnvironmentRegistry.instance().add({name: 'localEnv1', managedRuntime: true, environmentType: EnvironmentType.LOCAL_ENVIRONMENT, numberOfOrgs: 1});
+            await FabricEnvironmentRegistry.instance().add({name: 'localEnv2', managedRuntime: true, environmentType: EnvironmentType.LOCAL_ENVIRONMENT, numberOfOrgs: 2});
+
+            const results: IBlockchainQuickPickItem<FabricEnvironmentRegistryEntry>[] = await UserInputUtil.showFabricEnvironmentQuickPickBox('choose an environment', true, false, true, undefined, true, false) as IBlockchainQuickPickItem<FabricEnvironmentRegistryEntry>[];
+
+            results.should.deep.equal([]);
+
+            const localEnvironment: FabricEnvironmentRegistryEntry = await FabricEnvironmentRegistry.instance().get(FabricRuntimeUtil.LOCAL_FABRIC);
+            const localEnv1: FabricEnvironmentRegistryEntry = await FabricEnvironmentRegistry.instance().get('localEnv1');
+            const localEnv2: FabricEnvironmentRegistryEntry = await FabricEnvironmentRegistry.instance().get('localEnv2');
+
+            quickPickStub.should.have.been.calledWith([{ label: localEnvironment.name, data: localEnvironment }, { label: localEnv1.name, data: localEnv1 }, { label: localEnv2.name, data: localEnv2 }], {
+                ignoreFocusOut: true,
+                canPickMany: true,
+                placeHolder: 'choose an environment'
+            });
+        });
+
+        it('should only show running local environments', async () => {
+            quickPickStub.resolves([]);
+
+            await FabricEnvironmentRegistry.instance().add({name: 'localEnv1', managedRuntime: true, environmentType: EnvironmentType.LOCAL_ENVIRONMENT, numberOfOrgs: 1});
+            await FabricEnvironmentRegistry.instance().add({name: 'localEnv2', managedRuntime: true, environmentType: EnvironmentType.LOCAL_ENVIRONMENT, numberOfOrgs: 2});
+
+            const runtimeStub: sinon.SinonStubbedInstance<LocalEnvironment> = mySandBox.createStubInstance(LocalEnvironment);
+
+            runtimeStub.isRunning.onCall(0).resolves(true);
+            runtimeStub.isRunning.onCall(1).resolves(false);
+            runtimeStub.isRunning.onCall(2).resolves(true);
+
+            const getRuntimeStub: sinon.SinonStub = mySandBox.stub(LocalEnvironmentManager.instance(), 'getRuntime').returns(runtimeStub);
+
+            const results: IBlockchainQuickPickItem<FabricEnvironmentRegistryEntry>[] = await UserInputUtil.showFabricEnvironmentQuickPickBox('choose an environment', true, false, true, undefined, true, false, true) as IBlockchainQuickPickItem<FabricEnvironmentRegistryEntry>[];
+
+            results.should.deep.equal([]);
+
+            getRuntimeStub.should.have.been.calledThrice;
+            runtimeStub.isRunning.should.have.been.calledThrice;
+
+            const localEnvironment: FabricEnvironmentRegistryEntry = await FabricEnvironmentRegistry.instance().get(FabricRuntimeUtil.LOCAL_FABRIC);
+            const localEnv2: FabricEnvironmentRegistryEntry = await FabricEnvironmentRegistry.instance().get('localEnv2');
+
+            quickPickStub.should.have.been.calledWith([{ label: localEnvironment.name, data: localEnvironment }, { label: localEnv2.name, data: localEnv2 }], {
+                ignoreFocusOut: true,
+                canPickMany: true,
+                placeHolder: 'choose an environment'
+            });
+        });
+
+        it('should only show non running local environments', async () => {
+            quickPickStub.resolves([]);
+
+            await FabricEnvironmentRegistry.instance().add({name: 'localEnv1', managedRuntime: true, environmentType: EnvironmentType.LOCAL_ENVIRONMENT, numberOfOrgs: 1});
+            await FabricEnvironmentRegistry.instance().add({name: 'localEnv2', managedRuntime: true, environmentType: EnvironmentType.LOCAL_ENVIRONMENT, numberOfOrgs: 2});
+
+            const runtimeStub: sinon.SinonStubbedInstance<LocalEnvironment> = mySandBox.createStubInstance(LocalEnvironment);
+
+            runtimeStub.isRunning.onCall(0).resolves(false);
+            runtimeStub.isRunning.onCall(1).resolves(true);
+            runtimeStub.isRunning.onCall(2).resolves(false);
+
+            const getRuntimeStub: sinon.SinonStub = mySandBox.stub(LocalEnvironmentManager.instance(), 'getRuntime').returns(runtimeStub);
+
+            const results: IBlockchainQuickPickItem<FabricEnvironmentRegistryEntry>[] = await UserInputUtil.showFabricEnvironmentQuickPickBox('choose an environment', true, false, true, undefined, true, false, false) as IBlockchainQuickPickItem<FabricEnvironmentRegistryEntry>[];
+
+            results.should.deep.equal([]);
+
+            getRuntimeStub.should.have.been.calledThrice;
+            runtimeStub.isRunning.should.have.been.calledThrice;
+
+            const localEnvironment: FabricEnvironmentRegistryEntry = await FabricEnvironmentRegistry.instance().get(FabricRuntimeUtil.LOCAL_FABRIC);
+            const localEnv2: FabricEnvironmentRegistryEntry = await FabricEnvironmentRegistry.instance().get('localEnv2');
+
+            quickPickStub.should.have.been.calledWith([{ label: localEnvironment.name, data: localEnvironment }, { label: localEnv2.name, data: localEnv2 }], {
+                ignoreFocusOut: true,
+                canPickMany: true,
+                placeHolder: 'choose an environment'
+            });
+        });
+
         it('should throw error if no environments', async () => {
             await FabricEnvironmentRegistry.instance().clear();
 
@@ -333,7 +419,7 @@ describe('UserInputUtil', () => {
 
             quickPickStub.resolves();
             await UserInputUtil.showGatewayQuickPickBox('Choose a gateway', false, true);
-            quickPickStub.should.have.been.calledWith([{ label: managedGateway.displayName, data: managedGateway }, { label: gatewayEntryOne.name, data: gatewayEntryOne }, { label: gatewayEntryTwo.name, data: gatewayEntryTwo }]);
+            quickPickStub.should.have.been.calledWith([{ label: managedGateway.name, data: managedGateway }, { label: gatewayEntryOne.name, data: gatewayEntryOne }, { label: gatewayEntryTwo.name, data: gatewayEntryTwo }]);
         });
 
         it('should show any gateways with an associated wallet (associated gateway)', async () => {
@@ -600,7 +686,8 @@ describe('UserInputUtil', () => {
             const newPackage: PackageRegistryEntry = new PackageRegistryEntry({
                 name: 'smartContractPackageBlue',
                 version: '0.0.1',
-                path: 'smartContractPackageBlue@0.0.1.cds'
+                path: 'smartContractPackageBlue@0.0.1.cds',
+                sizeKB: 12
             });
 
             mySandBox.stub(PackageRegistry.instance(), 'getAll').resolves([newPackage]);
@@ -619,7 +706,8 @@ describe('UserInputUtil', () => {
             const newPackage: PackageRegistryEntry = new PackageRegistryEntry({
                 name: 'smartContractPackageBlue',
                 version: '0.0.1',
-                path: 'smartContractPackageBlue@0.0.1.cds'
+                path: 'smartContractPackageBlue@0.0.1.cds',
+                sizeKB: 12
             });
 
             mySandBox.stub(PackageRegistry.instance(), 'getAll').resolves([newPackage]);
@@ -705,7 +793,7 @@ describe('UserInputUtil', () => {
             const map: Map<string, Array<string>> = new Map<string, Array<string>>();
             map.set('channelOne', ['myPeerOne', 'myPeerTwo']);
             map.set('channelTwo', ['myPeerOne']);
-            fabricRuntimeConnectionStub.createChannelMap.resolves(map);
+            fabricRuntimeConnectionStub.createChannelMap.resolves({channelMap: map, v2channels: []});
             quickPickStub.resolves({ label: 'channelOne', data: ['myPeerOne', 'myPeerTwo'] });
 
             const result: IBlockchainQuickPickItem<Array<string>> = await UserInputUtil.showChannelQuickPickBox('Choose a channel');
@@ -722,7 +810,7 @@ describe('UserInputUtil', () => {
             const map: Map<string, Array<string>> = new Map<string, Array<string>>();
             map.set('channelThree', ['myPeerOne', 'myPeerTwo']);
             map.set('channelFour', ['myPeerOne']);
-            fabricRuntimeConnectionStub.createChannelMap.resolves(map);
+            fabricRuntimeConnectionStub.createChannelMap.resolves({channelMap: map, v2channels: []});
             quickPickStub.resolves({ label: 'channelThree', data: ['myPeerOne', 'myPeerTwo'] });
 
             const result: IBlockchainQuickPickItem<Array<string>> = await UserInputUtil.showChannelQuickPickBox('Choose a channel', map);
@@ -759,7 +847,7 @@ describe('UserInputUtil', () => {
             const map: Map<string, Array<string>> = new Map<string, Array<string>>();
             map.set('channelOne', ['myPeerOne', 'myPeerTwo']);
             map.set('channelTwo', ['myPeerOne']);
-            fabricClientConnectionStub.createChannelMap.resolves(map);
+            fabricClientConnectionStub.createChannelMap.resolves({channelMap: map, v2channels: []});
             quickPickStub.resolves({ label: 'channelOne', data: ['myPeerOne', 'myPeerTwo'] });
 
             const result: IBlockchainQuickPickItem<Array<string>> = await UserInputUtil.showChannelFromGatewayQuickPickBox('Choose a channel');
@@ -794,17 +882,20 @@ describe('UserInputUtil', () => {
             const packagedOne: PackageRegistryEntry = new PackageRegistryEntry({
                 name: 'biscuit-network',
                 version: '0.0.2',
-                path: 'biscuit-network@0.0.2.cds'
+                path: 'biscuit-network@0.0.2.cds',
+                sizeKB: 23
             });
             const packagedTwo: PackageRegistryEntry = new PackageRegistryEntry({
                 name: 'biscuit-network',
                 version: '0.0.3',
-                path: 'biscuit-network@0.0.3.cds'
+                path: 'biscuit-network@0.0.3.cds',
+                sizeKB: 23
             });
             const packagedThree: PackageRegistryEntry = new PackageRegistryEntry({
                 name: 'jaffa-network',
                 version: '0.0.1',
-                path: 'jaffa-network@0.0.1.cds'
+                path: 'jaffa-network@0.0.1.cds',
+                sizeKB: 34
             });
             const pathOne: string = path.join('some', 'path');
             const pathTwo: string = path.join('another', 'one');
@@ -827,7 +918,8 @@ describe('UserInputUtil', () => {
                         packageEntry: {
                             name: 'jaffa-network',
                             path: 'jaffa-network@0.0.1.cds',
-                            version: '0.0.1'
+                            version: '0.0.1',
+                            sizeKB: 34
                         },
                         workspace: undefined
                     }
@@ -859,12 +951,14 @@ describe('UserInputUtil', () => {
             const packagedOne: PackageRegistryEntry = new PackageRegistryEntry({
                 name: 'biscuit-network',
                 version: '0.0.2',
-                path: 'biscuit-network@0.0.2.cds'
+                path: 'biscuit-network@0.0.2.cds',
+                sizeKB: 23
             });
             const packagedTwo: PackageRegistryEntry = new PackageRegistryEntry({
                 name: 'biscuit-network',
                 version: '0.0.3',
-                path: 'biscuit-network@0.0.3.cds'
+                path: 'biscuit-network@0.0.3.cds',
+                sizeKB: 23
             });
 
             const pathOne: string = path.join('some', 'path');
@@ -894,12 +988,12 @@ describe('UserInputUtil', () => {
                 {
                     label: `${packagedOne.name}@${packagedOne.version}`,
                     description: 'Installed',
-                    data: { packageEntry: { name: packagedOne.name, version: packagedOne.version, path: undefined }, workspace: undefined }
+                    data: { packageEntry: { name: packagedOne.name, version: packagedOne.version, path: undefined, sizeKB: undefined }, workspace: undefined }
                 },
                 {
                     label: `${packagedTwo.name}@${packagedTwo.version}`,
                     description: 'Packaged',
-                    data: { packageEntry: { name: packagedTwo.name, version: packagedTwo.version, path: packagedTwo.path }, workspace: undefined }
+                    data: { packageEntry: { name: packagedTwo.name, version: packagedTwo.version, path: packagedTwo.path, sizeKB: 23 }, workspace: undefined }
                 },
                 {
                     label: `${workspaceOne.name}`,
@@ -933,12 +1027,12 @@ describe('UserInputUtil', () => {
                 {
                     label: 'biscuit-network@0.0.2',
                     description: 'Installed',
-                    data: { packageEntry: { name: 'biscuit-network', version: '0.0.2', path: undefined }, workspace: undefined }
+                    data: { packageEntry: { name: 'biscuit-network', version: '0.0.2', path: undefined, sizeKB: undefined }, workspace: undefined }
                 },
                 {
                     label: `biscuit-network@0.0.3`,
                     description: 'Installed',
-                    data: { packageEntry: { name: 'biscuit-network', version: '0.0.3', path: undefined }, workspace: undefined }
+                    data: { packageEntry: { name: 'biscuit-network', version: '0.0.3', path: undefined, sizeKB: undefined }, workspace: undefined }
                 }
             ]);
         });
@@ -1950,27 +2044,32 @@ describe('UserInputUtil', () => {
             const packageOne: PackageRegistryEntry = new PackageRegistryEntry({
                 name: 'new-network',
                 version: '0.0.1',
-                path: 'new-network@0.0.1.cds'
+                path: 'new-network@0.0.1.cds',
+                sizeKB: 45
             });
             const packageTwo: PackageRegistryEntry = new PackageRegistryEntry({
                 name: 'biscuit-network',
                 version: '0.0.1',
-                path: 'biscuit-network@0.0.1.cds'
+                path: 'biscuit-network@0.0.1.cds',
+                sizeKB: 23
             });
             const packageThree: PackageRegistryEntry = new PackageRegistryEntry({
                 name: 'biscuit-network',
                 version: '0.0.2',
-                path: 'biscuit-network@0.0.1.cds'
+                path: 'biscuit-network@0.0.2.cds',
+                sizeKB: 23
             });
             const packageFour: PackageRegistryEntry = new PackageRegistryEntry({
                 name: 'cake-network',
                 version: '0.0.3',
-                path: 'cake-network@0.0.3.cds'
+                path: 'cake-network@0.0.3.cds',
+                sizeKB: 56
             });
             const packageFive: PackageRegistryEntry = new PackageRegistryEntry({
                 name: 'cake-network',
                 version: '0.0.2',
-                path: 'cake-network@0.0.2.cds'
+                path: 'cake-network@0.0.2.cds',
+                sizeKB: 56
             });
 
             const pathOne: string = path.join('some', 'path');
@@ -1997,7 +2096,8 @@ describe('UserInputUtil', () => {
                         {
                             name: 'new-network',
                             version: '0.0.1',
-                            path: 'new-network@0.0.1.cds'
+                            path: 'new-network@0.0.1.cds',
+                            sizeKB: 45
                         },
                         workspace: undefined
                     }
@@ -2010,7 +2110,8 @@ describe('UserInputUtil', () => {
                         {
                             name: 'cake-network',
                             version: '0.0.2',
-                            path: 'cake-network@0.0.2.cds'
+                            path: 'cake-network@0.0.2.cds',
+                            sizeKB: 56
                         },
                         workspace: undefined
                     }
@@ -2153,8 +2254,8 @@ describe('UserInputUtil', () => {
             quickPickStub.resolves();
             await UserInputUtil.showWalletsQuickPickBox('Choose a wallet', false, true);
             quickPickStub.should.have.been.calledWith([
-                { label: `${FabricRuntimeUtil.LOCAL_FABRIC} - Orderer Wallet`, data: ordererWalletEntry },
-                { label: `${FabricRuntimeUtil.LOCAL_FABRIC} - Org1 Wallet`, data: localWalletEntry },
+                { label: `${FabricRuntimeUtil.LOCAL_FABRIC} - Orderer`, data: ordererWalletEntry },
+                { label: `${FabricRuntimeUtil.LOCAL_FABRIC} - Org1`, data: localWalletEntry },
                 { label: walletEntryTwo.name, data: walletEntryTwo },
                 { label: walletEntryOne.name, data: walletEntryOne }]);
         });
@@ -2593,17 +2694,46 @@ describe('UserInputUtil', () => {
         it('should display failed to activate message', async () => {
             const showErrorMessageStub: sinon.SinonSpy = mySandBox.stub(vscode.window, 'showErrorMessage').resolves();
             await UserInputUtil.failedActivationWindow('some error');
-            showErrorMessageStub.should.have.been.calledOnceWithExactly('Failed to activate extension: some error', 'Retry activation');
+            showErrorMessageStub.should.have.been.calledOnceWithExactly('Failed to activate extension: some error', 'Check status website', 'Retry activation');
         });
 
         it('should reload window if selected', async () => {
             const executeCommandStub: sinon.SinonStub = mySandBox.stub(vscode.commands, 'executeCommand').resolves();
             const showErrorMessageStub: sinon.SinonSpy = mySandBox.stub(vscode.window, 'showErrorMessage').resolves('Retry activation');
             await UserInputUtil.failedActivationWindow('some error');
-            showErrorMessageStub.should.have.been.calledOnceWithExactly('Failed to activate extension: some error', 'Retry activation');
+            showErrorMessageStub.should.have.been.calledOnceWithExactly('Failed to activate extension: some error', 'Check status website', 'Retry activation');
             executeCommandStub.should.have.been.calledOnceWithExactly('workbench.action.reloadWindow');
         });
+
+        it('should go to status page website if selected', async () => {
+            const executeCommandStub: sinon.SinonStub = mySandBox.stub(vscode.commands, 'executeCommand').resolves();
+            const uri: vscode.Uri = vscode.Uri.parse('https://ibm-blockchain.github.io/blockchain-vscode-extension/');
+            const showErrorMessageStub: sinon.SinonSpy = mySandBox.stub(vscode.window, 'showErrorMessage').resolves('Check status website');
+            await UserInputUtil.failedActivationWindow('some error');
+            showErrorMessageStub.should.have.been.calledOnceWithExactly('Failed to activate extension: some error', 'Check status website', 'Retry activation');
+            executeCommandStub.should.have.been.calledOnceWithExactly('vscode.open', uri);
+        });
     });
+
+    describe('failedNetworkStart', () => {
+
+         it('should display a message passed and the More Details button', async () => {
+            const showErrorMessageStub: sinon.SinonStub = mySandBox.stub(vscode.window, 'showErrorMessage').resolves();
+            const showStub: sinon.SinonStub = mySandBox.stub(VSCodeBlockchainOutputAdapter.instance(), 'show');
+            await UserInputUtil.failedNetworkStart('some error', 'some error message');
+            showErrorMessageStub.should.have.been.calledOnceWithExactly('some error', UserInputUtil.MORE_DETAILS);
+            showStub.should.not.have.been.called;
+         });
+
+         it('should display the Output channel if selected', async () => {
+            const outputAdapter: VSCodeBlockchainOutputAdapter = VSCodeBlockchainOutputAdapter.instance();
+            const showErrorMessageStub: sinon.SinonStub = mySandBox.stub(vscode.window, 'showErrorMessage').resolves(UserInputUtil.MORE_DETAILS);
+            const showOutputChannelStub: sinon.SinonStub = mySandBox.stub(outputAdapter, 'show').resolves();
+            await UserInputUtil.failedNetworkStart('some error', 'some error message');
+            showErrorMessageStub.should.have.been.calledOnceWithExactly('some error', UserInputUtil.MORE_DETAILS);
+            showOutputChannelStub.should.have.been.calledOnce;
+        });
+     });
 
     describe('showQuickPick', () => {
         it('should be able to pick an item', async () => {
@@ -2659,7 +2789,7 @@ describe('UserInputUtil', () => {
 
     describe('getWorkspaceFolders', () => {
 
-        it(' getWorkspaceFolders should not show package chooser when only one folder to package', async () => {
+        it('getWorkspaceFolders should not show package chooser when only one folder to package', async () => {
 
             const pathOne: string = path.join('some', 'path');
             const uriOne: vscode.Uri = vscode.Uri.file(pathOne);
@@ -2873,6 +3003,22 @@ describe('UserInputUtil', () => {
             stopRefreshStub.should.not.have.been.called;
         });
 
+        it('should just select all nodes from Ops Tools without asking on Eclipse Che', async () => {
+            mySandBox.stub(ExtensionUtil, 'isChe').returns(true);
+            quickPickStub.rejects(new Error('should not be called'));
+
+            const result: IBlockchainQuickPickItem<FabricNode>[] = await UserInputUtil.showNodesQuickPickBox('choose your nodes', nodes, true) as IBlockchainQuickPickItem<FabricNode>[];
+
+            for (const node of nodesPickWithoutCurrent) {
+                node.picked = true;
+            }
+
+            result.should.deep.equal(nodesPickWithoutCurrent);
+            quickPickStub.should.not.have.been.called;
+            sortNodesForQuickpickStub.should.have.been.called;
+            stopRefreshStub.should.not.have.been.called;
+        });
+
         it('should show description "(new)" when a new node is present from Ops Tool', async () => {
             const newPeerNode: FabricNode = FabricNode.newPeer('peerNew.org1.example.com', 'peerNew.org1.example.com', 'grps://somehost:7056', 'cake_fabric_wallet', 'admin', 'Org1MSP');
             const newNodes: FabricNode[] = Array.from(nodes);
@@ -2944,6 +3090,28 @@ describe('UserInputUtil', () => {
             quickPickStub.should.have.been.calledWith(nodesPickWithCurrent);
             sortNodesForQuickpickStub.should.have.been.called;
             changeDetectedWarningMessage.should.have.been.called;
+            stopRefreshStub.should.have.been.called;
+        });
+
+        it('should just select all nodes without asking on Eclipse Che when informOfChanges is true and changes are detected when connecting to Ops Tool', async () => {
+            mySandBox.stub(ExtensionUtil, 'isChe').returns(true);
+            const newPeerNode: FabricNode = FabricNode.newPeer('peerNew.org1.example.com', 'peerNew.org1.example.com', 'grps://somehost:7056', 'cake_fabric_wallet', 'admin', 'Org1MSP');
+            const newNodes: FabricNode[] = Array.from(nodes);
+            newNodes.push(newPeerNode);
+            nodesPickWithoutCurrent.push({ label: newPeerNode.name, data: newPeerNode, description: '(new)' });
+            changeDetectedWarningMessage.resolves(true);
+            quickPickStub.rejects(new Error('should not be called'));
+
+            const result: IBlockchainQuickPickItem<FabricNode>[] = await UserInputUtil.showNodesQuickPickBox('choose your nodes', newNodes, true, nodes, true) as IBlockchainQuickPickItem<FabricNode>[];
+
+            for (const node of nodesPickWithoutCurrent) {
+                node.picked = true;
+            }
+
+            result.should.deep.equal(nodesPickWithoutCurrent);
+            quickPickStub.should.not.have.been.called;
+            sortNodesForQuickpickStub.should.have.been.called;
+            changeDetectedWarningMessage.should.not.have.been.called;
             stopRefreshStub.should.have.been.called;
         });
     });

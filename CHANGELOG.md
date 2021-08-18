@@ -1,5 +1,463 @@
 # IBM Blockchain Platform Extension Change Log
 
+## 1.0.40: November 12th 2020
+
+Announcements
+---
+* We’re still waiting for the gRPC v1.25.0 binaries to be published so you may be affected by [this issue](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1621), where gRPC fails to rebuild when using VS Code >1.40.x.
+ > Please see [this comment](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1621#issuecomment-552926559) for a workaround. 
+
+Features & Enhancements
+---
+* Added support for connecting to IBM Blockchain Platform 2.5.1 [#2791](https://github.com/IBM-Blockchain/blockchain-vscode-extension/pull/2791).
+
+Fixes
+---
+* Reverted packaging metadata path change made in v1.0.39 [#2797](https://github.com/IBM-Blockchain/blockchain-vscode-extension/pull/2797).
+ > We have reverted to look for the 'META-INF' directory again - sorry for the inconvenience!
+
+
+## 1.0.39: October 29th 2020
+
+Announcements
+---
+* We’re still waiting for the gRPC v1.25.0 binaries to be published so you may be affected by [this issue](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1621), where gRPC fails to rebuild when using VS Code >1.40.x.
+ > Please see [this comment](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1621#issuecomment-552926559) for a workaround. 
+
+Features & Enhancements
+---
+* New "Joining a network" tutorials [#2677](https://github.com/IBM-Blockchain/blockchain-vscode-extension/pull/2677).
+ > The purpose of this set of tutorials is to take you through the process of joining an existing Hyperledger Fabric network using the tools provided by IBM Blockchain Platform. 
+
+Fixes
+---
+* Fixed packaging to look for 'contract-metadata' directory [#2755](https://github.com/IBM-Blockchain/blockchain-vscode-extension/pull/2755).
+* Made the IBM Cloud Account extension optional [#2713](https://github.com/IBM-Blockchain/blockchain-vscode-extension/pull/2713).
+
+![conga comic](https://congacomic.github.io/assets/img/blockheight-81.jpg)
+
+## 1.0.38: October 15th 2020
+
+Announcements
+---
+* We’re still waiting for the gRPC v1.25.0 binaries to be published so you may be affected by [this issue](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1621), where gRPC fails to rebuild when using VS Code >1.40.x.
+ > Please see [this comment](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1621#issuecomment-552926559) for a workaround. 
+
+Features & Enhancements
+---
+* Updated packaging to handle multiple GOPATH paths [#2596](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/2596).
+* Only display v1 capability channels in tree [#2596](https://github.com/IBM-Blockchain/blockchain-vscode-extension/pull/2624).
+* Perform go mod vendor for Go low-level chaincode [#2689](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/2689).
+* Updated Node test runner to be optional [#2636](https://github.com/IBM-Blockchain/blockchain-vscode-extension/pull/2635).
+* Updated required versions of Node [#2641](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/2641).
+* Updated OpenSSL requirements [#2633](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/2633).
+* Updated C++ build tools check for Windows [#2628](https://github.com/IBM-Blockchain/blockchain-vscode-extension/pull/2628).
+
+![conga comic](https://congacomic.github.io/assets/img/blockheight-80.jpg)
+
+## 1.0.37: August 27th 2020
+
+Announcements
+---
+* We’re still waiting for the gRPC v1.25.0 binaries to be published so you may be affected by [this issue](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1621), where gRPC fails to rebuild when using VS Code >1.40.x.
+ > Please see [this comment](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1621#issuecomment-552926559) for a workaround. 
+
+Features & Enhancements
+---
+* Ability to open the IBM Blockchain Platform Console from the environment [#2536](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/2536).
+* Automatically detect system requirements [#1398](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1398).
+* Read identity name from JSON file [#755](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/755).
+* Added command to remove extension directory [#1639](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1639).
+* Updated default export connection profile name to be in pascal case [#2175](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/2175).
+
+Fixes
+---
+* Fixed IBM Cloud account selection bug [#2583](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/2583).
+
+![conga comic](https://congacomic.github.io/assets/img/blockheight-79.jpg)
+
+## 1.0.36: July 30th 2020
+
+Announcements
+---
+* We’re still waiting for the gRPC v1.25.0 binaries to be published so you may be affected by [this issue](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1621), where gRPC fails to rebuild when using VS Code >1.40.x.
+ > Please see [this comment](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1621#issuecomment-552926559) for a workaround. 
+
+Features & Enhancements
+---
+*  Allow user to bring output into focus on network start failure [#2172](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/2172).
+*  Docker logs shown on transaction failure [#1964](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1964).
+*  Updated IBM Cloud group name and behaviour [#2521](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/2521).
+
+Fixes
+---
+* Fallback on GitHub retrieval failure [#2543](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/2543).
+
+![conga comic](https://congacomic.github.io/assets/img/blockheight-78.jpg)
+
+## 1.0.35: July 16th 2020
+
+Announcements
+---
+* We’re still waiting for the gRPC v1.25.0 binaries to be published so you may be affected by [this issue](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1621), where gRPC fails to rebuild when using VS Code >1.40.x.
+ > Please see [this comment](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1621#issuecomment-552926559) for a workaround. 
+
+Features & Enhancements
+---
+*  Added "+ Log in to IBM Cloud" tree item to environment panel. [#2430](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/2430).
+
+
+![conga comic](https://congacomic.github.io/assets/img/blockheight-77.jpg)
+
+## 1.0.34: July 2nd 2020
+
+Announcements
+---
+* We’re still waiting for the gRPC v1.25.0 binaries to be published so you may be affected by [this issue](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1621), where gRPC fails to rebuild when using VS Code >1.40.x.
+ > Please see [this comment](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1621#issuecomment-552926559) for a workaround. 
+
+Fixes
+---
+* Fix associating a wallet with multiple environments [#2354](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/2354).
+
+
+![conga comic](https://congacomic.github.io/assets/img/blockheight-76.jpg)
+
+## 1.0.33: June 18th 2020
+
+Announcements
+---
+* We’re still waiting for the gRPC v1.25.0 binaries to be published so you may be affected by [this issue](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1621), where gRPC fails to rebuild when using VS Code >1.40.x.
+ > Please see [this comment](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1621#issuecomment-552926559) for a workaround. 
+
+Fixes
+---
+* Fixed chaincode logs not appearing in logs [#2447](https://github.com/IBM-Blockchain/blockchain-vscode-extension/pulls/2447).
+
+* Fixed packaging contracts on VS Code 1.44.2 [#2243](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/2243).
+
+* Replaced Java 'org.json.JSONObject' non-deterministic package [#2287](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/2287).
+
+
+![conga comic](https://congacomic.github.io/assets/img/blockheight-75.jpg)
+
+## 1.0.32: June 4th 2020
+
+Announcements
+---
+* We’re still waiting for the gRPC v1.25.0 binaries to be published so you may be affected by [this issue](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1621), where gRPC fails to rebuild when using VS Code >1.40.x.
+ > Please see [this comment](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1621#issuecomment-552926559) for a workaround. 
+
+Features & Enhancements
+---
+* Updated environment grouping and icons [#2023](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/2023).
+
+* Export application data (experimental feature) [#2220](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/2220).
+
+Fixes
+---
+* Fixed tutorial panels on smaller screen sizes [#2273](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/2273).
+
+
+![conga comic](https://congacomic.github.io/assets/img/blockheight-74.jpg)
+
+## 1.0.31: May 26th 2020
+
+Announcements
+---
+* This version of the extension is a republish of our v1.0.30 release which didn't publish to the marketplace correctly.
+
+* We’re still waiting for the gRPC v1.25.0 binaries to be published so you may be affected by [this issue](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1621), where gRPC fails to rebuild when using VS Code >1.40.x.
+ > Please see [this comment](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1621#issuecomment-552926559) for a workaround. 
+
+Features & Enhancements
+---
+* Updated gateway & wallet grouping - part of [#2023](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/2023).
+
+
+Fixes
+---
+* Updated OpenSSL ‘info’ on PreReq view with required install locations [#2298](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/2298).
+
+* Only show right-click ‘Start’ option on local environments [#2285](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/2285).
+
+* Updated ‘Open Tutorial’ buttons [#2275](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/2275).
+
+* Fixed webview on Windows [#2233](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/2233).
+
+![conga comic](https://congacomic.github.io/assets/img/blockheight-73.jpg)
+
+## 1.0.30: May 22nd 2020
+
+Announcements
+---
+* This version of the extension is a republish of our v1.0.29 release which didn't publish to the marketplace correctly.
+
+* We’re still waiting for the gRPC v1.25.0 binaries to be published so you may be affected by [this issue](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1621), where gRPC fails to rebuild when using VS Code >1.40.x.
+ > Please see [this comment](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1621#issuecomment-552926559) for a workaround. 
+
+Features & Enhancements
+---
+* Updated gateway & wallet grouping - part of [#2023](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/2023).
+
+
+Fixes
+---
+* Updated OpenSSL ‘info’ on PreReq view with required install locations [#2298](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/2298).
+
+* Only show right-click ‘Start’ option on local environments [#2285](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/2285).
+
+* Updated ‘Open Tutorial’ buttons [#2275](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/2275).
+
+* Fixed webview on Windows [#2233](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/2233).
+
+![conga comic](https://congacomic.github.io/assets/img/blockheight-73.jpg)
+
+## 1.0.29: May 21st 2020
+
+Announcements
+---
+* We’re still waiting for the gRPC v1.25.0 binaries to be published so you may be affected by [this issue](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1621), where gRPC fails to rebuild when using VS Code >1.40.x.
+ > Please see [this comment](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1621#issuecomment-552926559) for a workaround. 
+
+Features & Enhancements
+---
+* Updated gateway & wallet grouping - part of [#2023](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/2023).
+
+
+Fixes
+---
+* Updated OpenSSL ‘info’ on PreReq view with required install locations [#2298](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/2298).
+
+* Only show right-click ‘Start’ option on local environments [#2285](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/2285).
+
+* Updated ‘Open Tutorial’ buttons [#2275](https://github.com/IBM-Blockchain/blockchain-vscode-extension/pull/2275).
+
+
+![conga comic](https://congacomic.github.io/assets/img/blockheight-73.jpg)
+
+## 1.0.28: May 7th 2020
+
+Announcements
+---
+* We’re still waiting for the gRPC v1.25.0 binaries to be published so you may be affected by [this issue](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1621), where gRPC fails to rebuild when using VS Code >1.40.x.
+ > Please see [this comment](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1621#issuecomment-552926559) for a workaround. 
+
+Features & Enhancements
+---
+* Add an environment by connecting to IBM Blockchain Platform Console for IBM Cloud [#1333](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1333).
+ > When adding an environment, selecting ‘Add an IBM Blockchain Platform network’ will now let you discover nodes from your IBM Blockchain Platform Console for IBM Cloud instance.
+
+* New developer tutorials and updated tutorial view [#1197](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1197).
+ > There are 10 new tutorials (written by the team who run IBM’s developer labs and create official blockchain certifications) that will take you through core concepts, preparing you to take the IBM Blockchain Essentials and IBM Blockchain Foundation Developer courses and hopefully earn the badges!
+ > 
+ > These tutorials cover topics such as:
+ > -	Introduction to Blockchain
+ > -	Creating a smart contract
+ > -	Deploying a smart contract
+ > -	Invoking a smart contract from VS Code
+ > -	Invoking a smart contract from an external application
+ > -	Upgrading a smart contract
+ > -	Debugging a smart contract
+ > -	Testing a smart contract
+ > -	Publishing an event 
+ > -	Recap and additional resources
+
+Fixes
+---
+* Fixed ‘Webview is disposed’ when attempting to open a closed webview in VS Code 1.44.x [#2234](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/2234).
+
+* Updated code-server support and instructions [#2236](https://github.com/IBM-Blockchain/blockchain-vscode-extension/pull/2236).
+
+
+![conga comic](https://congacomic.github.io/assets/img/blockheight-72.jpg)
+
+## 1.0.27: April 23rd 2020
+
+Announcements
+---
+* We’re still waiting for the gRPC v1.25.0 binaries to be published so you may be affected by [this issue](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1621), where gRPC fails to rebuild when using VS Code 1.40.x.
+  > Please see [this comment](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1621#issuecomment-552926559) for a workaround. 
+
+Features & Enhancements
+---
+* Group gateways and wallets into folders based on the environment they're related to [#1865](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1865).
+
+Fixes
+---
+* Fixed JDK popup appearing on Mac when checking prerequisites [#1657](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1657).
+
+* Fixed "Cannot read property 'major' of null" error on activation [#2200](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/2200).
+
+* Fixed TypeScript contract packaging failing on VS Code 1.44.x [#2193](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/2193).
+
+
+![conga comic](https://congacomic.github.io/assets/img/blockheight-71.jpg)
+
+
+## 1.0.26: April 7th 2020
+
+Announcements
+---
+* We’re still waiting for the gRPC v1.25.0 binaries to be published so you may be affected by [this issue](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1621), where gRPC fails to rebuild when using VS Code 1.40.x.
+  > Please see [this comment](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1621#issuecomment-552926559) for a workaround. 
+
+Fixes
+---
+* Fixed exported wallets containing unexpected additional content [#2065](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/2065).
+
+* Reverted "Periodically refresh environment, gateway and wallet panels" [#2159](https://github.com/IBM-Blockchain/blockchain-vscode-extension/pull/2159).
+
+
+## 1.0.25: April 2nd 2020
+
+Announcements
+---
+* We’re still waiting for the gRPC v1.25.0 binaries to be published so you may be affected by [this issue](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1621), where gRPC fails to rebuild when using VS Code 1.40.x.
+  > Please see [this comment](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1621#issuecomment-552926559) for a workaround. 
+
+Features & Enhancements
+---
+* Added Status Page [#2029](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/2029), [#1975](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1975)
+  > We’ve now added a status page [https://ibm-blockchain.github.io/blockchain-vscode-extension](https://ibm-blockchain.github.io/blockchain-vscode-extension) which shows any known issues with the extension, as well as listing fixes and features for future releases!
+
+* Subscribe to emitted smart contract events [#2029](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/2029).
+  > Call `Subscribe to Events` from the command palette, or right-click on a smart contract in the Fabric Gateways to subscribe to events emitted from your smart contract.
+
+* Support adding IBM Blockchain Platform 2.1.3 environments [#2073](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/2073), [#2078](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/2078).
+
+* Periodically refresh environment, gateway and wallet panels [#1879](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1879).
+
+Fixes
+---
+* Stop showing teardown message on generator update when there are no local environments [#2069](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/2069).
+
+* Only show relevant right-click actions and command options on stopped/started local environments [#1500](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1500).
+
+* Updated Node & npm prerequisite download location [#2101](https://github.com/IBM-Blockchain/blockchain-vscode-extension/pull/2101).
+
+![conga comic](https://congacomic.github.io/assets/img/blockheight-70.jpg)
+
+## 1.0.24: March 19th 2020
+
+Announcements
+---
+* We’re still waiting for the gRPC v1.25.0 binaries to be published so you may be affected by [this issue](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1621), where gRPC fails to rebuild when using VS Code 1.40.x.
+   > Please see [this comment](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1621#issuecomment-552926559) for a workaround. 
+
+Features & Enhancements
+---
+* View files included in package [#1960](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1960).
+   > Right-click on your package in the `Smart Contracts` panel and select `View Package Information` to see the files included in your package. The files will be logged out in the Output.
+
+* Updated Home page design [#1982](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1982).
+
+* Add an IBM Blockchain Platform network using a username & password (in addition to API Key and Secret) [#1979](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1979).
+
+* Updated to use Fabric SDK 1.4.8 packages - this also fixes rebuild on VS Code 1.43.0 [#2059](https://github.com/IBM-Blockchain/blockchain-vscode-extension/pull/2059)
+
+* Allow debugging of 2-organisation local environments [#1995](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1995)
+   > When you start the debugger it will ask you to select an organisation (and gateway) to debug for. To select another organisation, you must stop the debugger and start it again.
+
+* Added "Create and use custom Fabric network" tutorial [#1749](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1749)
+   > This tutorial is accessible from the Tutorial Gallery and explains how to write and run Ansible playbooks, as well as import the network into the extension.
+
+Fixes
+---
+* Remove trailing path from URL when adding an IBM Blockchain Platform network [#1980](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1980).
+
+* Force teardown local environments when generator has major version change [#1880](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1880).
+
+![conga comic](https://congacomic.github.io/assets/img/blockheight-69.jpg)
+
+## 1.0.23: March 10th 2020
+
+Announcements
+---
+* This version was released to fix a bug found in v1.0.21.
+
+* We’re still waiting for the gRPC v1.25.0 binaries to be published so you may be affected by [this issue](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1621), where gRPC fails to rebuild when using VS Code >v1.4
+   > Please see [this comment](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1621#issuecomment-552926559) for a workaround. 
+
+* As part of our new feature for creating new 1-Organisation or 2-Organisation local Fabric environments locally, we have renamed the 'Local Fabric' environment to '1 Org Local Fabric'.
+
+* If you have generated any functional tests for the old 'Local Fabric', you will need to change any paths to use the '1 Org Local Fabric' environment now.
+
+Fixes
+---
+* Fixed environments failing to load when generator version updates [#2048](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/2048).
+
+## 1.0.22: March 10th 2020
+
+Announcements
+---
+* This version was released to fix a bug found in v1.0.21.
+
+* We’re still waiting for the gRPC v1.25.0 binaries to be published so you may be affected by [this issue](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1621), where gRPC fails to rebuild when using VS Code >v1.4
+   > Please see [this comment](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1621#issuecomment-552926559) for a workaround. 
+
+* As part of our new feature for creating new 1-Organisation or 2-Organisation local Fabric environments locally, we have renamed the 'Local Fabric' environment to '1 Org Local Fabric'.
+
+* If you have generated any functional tests for the old 'Local Fabric', you will need to change any paths to use the '1 Org Local Fabric' environment now.
+
+Fixes
+---
+* Fixed `"Failed to activate extension: TypeError: 'isExtensible' on proxy: trap result does not reflect extensibility of proxy target (which is 'true')."` error [#2040](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/2040).
+
+## 1.0.21: March 9th 2020
+
+Announcements
+---
+* We’re still waiting for the gRPC v1.25.0 binaries to be published so you may be affected by [this issue](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1621), where gRPC fails to rebuild when using VS Code 1.40.x.
+   > Please see [this comment](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1621#issuecomment-552926559) for a workaround. 
+
+* As part of our new feature for creating new 1-Organisation or 2-Organisation local Fabric environments locally, we have renamed the 'Local Fabric' environment to '1 Org Local Fabric'.
+
+* If you have generated any functional tests for the old 'Local Fabric', you will need to change any paths to use the '1 Org Local Fabric' environment now.
+
+Features & Enhancements
+---
+* Ability to create new 1-Organisation or 2-Organisation local Fabric environments locally [#1898](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1898), [#1862](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1862), [#1863](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1863), [#1558](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1558).
+   > It's now possible to create a new local runtime from either a 1-Organisation or 2-Organisation template, when adding a new environment.
+   >
+   > A 2-Organisation local environment can be used to try out generated private data smart contracts.
+
+* Added a new `Getting Started with Private Data` tutorial [#1988](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1988).
+   > This tutorial goes through a private data scenario, creating the 2 Organisation network and generating a starting private data smart contract using the extension.
+   >
+   > This tutorial can be accessed from the Tutorial Gallery by running the '`View Tutorial Gallery`' command. 
+
+* Ability to open up the latest release notes [#1898](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1898).
+   > From the Command Palette it's now possible to open up the latest release notes by running the '`Open Release Notes`' command.
+
+* Ability to open up Home page from the status bar [#1983](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1983).
+   > On the bottom status bar, you can now click '`Blockchain Home`' to open up the home page.
+
+* Newly generated smart contracts will use version 1.4.5 of the `fabric-contract-api` and `fabric-shim`. Any local environments created will also use 1.4.6 of the Fabric Docker images.
+   > This also fixes the packaging issue [#2014](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/2014)
+
+Fixes
+---
+* Should show error if there are no packages to install [#1701](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1701).
+
+* Should show error if there are no smart contracts to instantiate [#1702](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1702).
+
+* Disabling local functionality shouldn't make Docker for Windows or the System Requirements required [#1843](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1843).
+
+* Fixed adding a wallet with the same name deleting the original wallet [#1838](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1838).
+
+* Fixed being able to replace an identity [#1846](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1846).
+
+* Fixed asking the user to select the channel when submitting/evaluating a transaction, when the contract is instantied on multiple channels [#1777](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1777).
+
+* Fixed error when attempting to upgrade from command palette when there are no smart contracts [#1970](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1970).
+
+* Fixed error when attempting to delete an environment which has a gateway created from it [#1966](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1966).
+
+* Removed broken `Open New Terminal` command [#1858](https://github.com/IBM-Blockchain/blockchain-vscode-extension/issues/1858).
+
+![conga comic](https://congacomic.github.io/assets/img/blockheight-68.jpg)
+
 ## 1.0.20: February 20th 2020
 
 Announcements

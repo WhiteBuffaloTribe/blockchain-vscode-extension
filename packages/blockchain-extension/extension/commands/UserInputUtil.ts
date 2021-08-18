@@ -24,6 +24,9 @@ import { FabricCertificate, FabricChaincode, FabricEnvironmentRegistry, FabricEn
 import { FabricEnvironmentManager } from '../fabric/environments/FabricEnvironmentManager';
 import { EnvironmentFactory } from '../fabric/environments/EnvironmentFactory';
 import { TimerUtil } from '../util/TimerUtil';
+import { LocalEnvironment } from '../fabric/environments/LocalEnvironment';
+import { LocalEnvironmentManager } from '../fabric/environments/LocalEnvironmentManager';
+import { ExtensionUtil } from '../util/ExtensionUtil';
 
 export interface IBlockchainQuickPickItem<T = undefined> extends vscode.QuickPickItem {
     data: T;
@@ -53,6 +56,7 @@ export class UserInputUtil {
     static readonly NO: string = 'No';
     static readonly DEFAULT: string = 'Default';
     static readonly CUSTOM: string = 'Custom';
+    static readonly MORE_DETAILS: string = 'More Details';
 
     static readonly DEFAULT_SC_EP: string = `${UserInputUtil.DEFAULT} (single endorser, any org)`;
 
@@ -85,6 +89,8 @@ export class UserInputUtil {
     static readonly ADD_ENVIRONMENT_FROM_DIR_DESCRIPTION: string = '(browse for directory)';
     static readonly ADD_ENVIRONMENT_FROM_OPS_TOOLS: string = 'Add an IBM Blockchain Platform network';
     static readonly ADD_ENVIRONMENT_FROM_OPS_TOOLS_DESCRIPTION: string = '(connect to IBM Blockchain Platform Console)';
+    static readonly ADD_ENVIRONMENT_FROM_MICROFAB: string = 'Add a Microfab network';
+    static readonly ADD_ENVIRONMENT_FROM_MICROFAB_DESCRIPTION: string = '(connect to an instance of the Microfab runtime)';
     static readonly CANCEL_NO_CERT_CHAIN: string = 'Cancel';
     static readonly CANCEL_NO_CERT_CHAIN_DESCRIPTION: string = `(CA certificates must be added to the operating system trusted CA certificate store)`;
     static readonly CONNECT_NO_CA_CERT_CHAIN: string = 'Proceed without certificate verification';
@@ -92,10 +98,15 @@ export class UserInputUtil {
     static readonly GENERATE_DEFAULT_CONTRACT_DESCRIPTION: string = 'CRUD operations to a ledger shared by all network members';
     static readonly GENERATE_PD_CONTRACT: string = 'Private Data Contract';
     static readonly GENERATE_PD_CONTRACT_DESCRIPTION: string = 'CRUD and verify operations to a collection, private to a single network member';
+    static readonly GENERATE_ENVIRONMENT_PROFILE: string = 'Environment profile';
+    static readonly GENERATE_ENVIRONMENT_PROFILE_DESCRIPTION: string = '(describes connection profile, ID, channel and smart contract)';
+    static readonly GENEARTE_SMART_CONTRACT_METADATA: string = 'Smart contract metadata';
+    static readonly GENERATE_SMART_CONTRACT_METADATA_DESCRIPTION: string = '(describes transactions available to client applications)';
 
     static readonly ONE_ORG_TEMPLATE: string = `1 Org template (1 CA, 1 peer, 1 channel)`;
     static readonly TWO_ORG_TEMPLATE: string = `2 Org template (2 CAs, 2 peers, 1 channel)`;
     static readonly CREATE_ADDITIONAL_LOCAL_NETWORKS: string = `Create additional local networks (tutorial)`;
+    static readonly CREATE_ADDITIONAL_LOCAL_NETWORKS_DATA: number = 3;
 
     public static async showQuickPick(prompt: string, items: string[], canPickMany: boolean = false): Promise<string | string[]> {
         const quickPickOptions: vscode.QuickPickOptions = {
@@ -148,7 +159,7 @@ export class UserInputUtil {
         return vscode.window.showQuickPick(items, quickPickOptions);
     }
 
-    public static async showFabricEnvironmentQuickPickBox(prompt: string, canPickMany: boolean, autoChoose: boolean, showLocalFabric: boolean = false, envType: IncludeEnvironmentOptions = IncludeEnvironmentOptions.ALLENV, onlyShowManagedEnvironment: boolean = false, onlyShowNonAnsibleEnvironment: boolean = false): Promise<Array<IBlockchainQuickPickItem<FabricEnvironmentRegistryEntry>> | IBlockchainQuickPickItem<FabricEnvironmentRegistryEntry> | undefined> {
+    public static async showFabricEnvironmentQuickPickBox(prompt: string, canPickMany: boolean, autoChoose: boolean, showLocalFabric: boolean = false, envType: IncludeEnvironmentOptions = IncludeEnvironmentOptions.ALLENV, onlyShowManagedEnvironment: boolean = false, onlyShowNonAnsibleEnvironment: boolean = false, isRunning?: boolean): Promise<Array<IBlockchainQuickPickItem<FabricEnvironmentRegistryEntry>> | IBlockchainQuickPickItem<FabricEnvironmentRegistryEntry> | undefined> {
         const quickPickOptions: vscode.QuickPickOptions = {
             ignoreFocusOut: true,
             canPickMany: canPickMany,
@@ -173,6 +184,24 @@ export class UserInputUtil {
                 environmentsFiltered = environments.filter((environment: FabricEnvironmentRegistryEntry) => !environment.url);
                 break;
             }
+        }
+
+        if (isRunning !== undefined) {
+            // If isRunning is true, we only want to show running local environments.
+            // If isRunning is false, we want to show non-running local environments.
+
+            for (let i: number = environmentsFiltered.length - 1; i >= 0; i--) {
+                const entry: FabricEnvironmentRegistryEntry = environmentsFiltered[i];
+                const _runtime: LocalEnvironment = LocalEnvironmentManager.instance().getRuntime(entry.name);
+                const _isRuntimeRunning: boolean = await _runtime.isRunning();
+                if (_isRuntimeRunning === isRunning) {
+                    continue;
+                } else {
+                    // Remove environment
+                    environmentsFiltered.splice(i, 1);
+                }
+            }
+
         }
 
         environmentsQuickPickItems = environmentsFiltered.map((environment: FabricEnvironmentRegistryEntry) => {
@@ -227,7 +256,7 @@ export class UserInputUtil {
         }
 
         const gatewaysQuickPickItems: Array<IBlockchainQuickPickItem<FabricGatewayRegistryEntry>> = allGateways.map((gateway: FabricGatewayRegistryEntry) => {
-            const gatewayDisplayName: string = gateway.displayName ? gateway.displayName : gateway.name;
+            const gatewayDisplayName: string = gateway.name;
 
             return { label: gatewayDisplayName, data: gateway };
         });
@@ -448,7 +477,8 @@ export class UserInputUtil {
 
         let channels: Array<string> = [];
         if (!channelMap) {
-            channelMap = await connection.createChannelMap();
+            const createChannelsResult: {channelMap: Map<string, string[]>, v2channels: Array<string>} = await connection.createChannelMap();
+            channelMap = createChannelsResult.channelMap;
         }
 
         channels = Array.from(channelMap.keys());
@@ -477,8 +507,8 @@ export class UserInputUtil {
             return;
         }
 
-        const channelMap: Map<string, Array<string>> = await connection.createChannelMap();
-
+        const createChannelsResult: {channelMap: Map<string, Array<string>>, v2channels: Array<string>} = await connection.createChannelMap();
+        const channelMap: Map<string, Array<string>> = createChannelsResult.channelMap;
         const channels: Array<string> = Array.from(channelMap.keys());
 
         const quickPickItems: Array<IBlockchainQuickPickItem<Array<string>>> = channels.map((channel: string) => {
@@ -581,7 +611,8 @@ export class UserInputUtil {
     public static async showClientInstantiatedSmartContractsQuickPick(prompt: string, channelName?: string, showAssociated?: boolean): Promise<IBlockchainQuickPickItem<{ name: string, channel: string, version: string }> | undefined> {
         const outputAdapter: VSCodeBlockchainOutputAdapter = VSCodeBlockchainOutputAdapter.instance();
         const connection: IFabricGatewayConnection = FabricGatewayConnectionManager.instance().getConnection();
-        const channelMap: Map<string, Array<string>> = await connection.createChannelMap();
+        const createChannelsResult: {channelMap: Map<string, string[]>, v2channels: Array<string>} = await connection.createChannelMap();
+        const channelMap: Map<string, Array<string>> = createChannelsResult.channelMap;
 
         let instantiatedChaincodes: Array<{ name: string, version: string, channel: string }> = [];
 
@@ -642,7 +673,8 @@ export class UserInputUtil {
             return;
         }
 
-        const channelMap: Map<string, Array<string>> = await connection.createChannelMap();
+        const createChannelsResult: {channelMap: Map<string, string[]>, v2channels: Array<string>} = await connection.createChannelMap();
+        const channelMap: Map<string, Array<string>> = createChannelsResult.channelMap;
 
         const instantiatedChaincodes: Array<{ name: string, version: string, channel: string }> = [];
 
@@ -1043,12 +1075,26 @@ export class UserInputUtil {
 
     public static async failedActivationWindow(error: string): Promise<void> {
 
+        const statusPagePrompt: string = 'Check status website';
         const retryPrompt: string = 'Retry activation';
-        const response: string = await vscode.window.showErrorMessage(`Failed to activate extension: ${error}`, retryPrompt);
+        const response: string = await vscode.window.showErrorMessage(`Failed to activate extension: ${error}`, statusPagePrompt, retryPrompt);
         if (response === retryPrompt) {
             await vscode.commands.executeCommand('workbench.action.reloadWindow');
+        } else if (response === statusPagePrompt) {
+            const uri: vscode.Uri = vscode.Uri.parse('https://ibm-blockchain.github.io/blockchain-vscode-extension/');
+            await vscode.commands.executeCommand('vscode.open', uri);
         }
     }
+
+    public static async failedNetworkStart(popupMsg: string, logMsg: string): Promise<void> {
+
+        const outputAdapter: VSCodeBlockchainOutputAdapter = VSCodeBlockchainOutputAdapter.instance();
+        outputAdapter.log(LogType.ERROR, undefined, logMsg);
+        const response: string = await vscode.window.showErrorMessage(popupMsg, UserInputUtil.MORE_DETAILS);
+        if (response === UserInputUtil.MORE_DETAILS) {
+            outputAdapter.show();
+        }
+     }
 
     /**
      * Method to determine if there are multiple smart contracts within the active workspace.
@@ -1166,7 +1212,15 @@ export class UserInputUtil {
                 // stop the refresh until the user has finished making changes
                 FabricEnvironmentManager.instance().stopEnvironmentRefresh();
                 // Ask user if they want to edit filters
-                const editFilters: boolean = await UserInputUtil.showConfirmationWarningMessage('Differences have been detected between the local environment and the Ops Tools environment. Would you like to filter nodes?');
+                let editFilters: boolean;
+                if (ExtensionUtil.isChe()) {
+                    // Issue 2336: see below; because we never show the filter quick pick, we don't want
+                    // to show this message either. Just pretend that they said yes, and then went on
+                    // to select all of the nodes,
+                    editFilters = true;
+                } else {
+                    editFilters = await UserInputUtil.showConfirmationWarningMessage('Differences have been detected between the local environment and the Ops Tools environment. Would you like to filter nodes?');
+                }
                 if (!editFilters) {
                     return;
                 }
@@ -1183,6 +1237,14 @@ export class UserInputUtil {
             placeHolder: prompt
         };
 
+        if (ExtensionUtil.isChe()) {
+            // Issue 2336: Eclipse Che doesn't support canPickMany, and that makes this quick pick pointless
+            // as 99% of the time you want to pick many. Just return all of the nodes instead for now.
+            return sortedQuickPickItems.map((sortedQuickPickItem: IBlockchainQuickPickItem<FabricNode>) => {
+                sortedQuickPickItem.picked = true;
+                return sortedQuickPickItem;
+            });
+        }
         return vscode.window.showQuickPick(sortedQuickPickItems, quickPickOptions);
     }
 
@@ -1216,7 +1278,7 @@ export class UserInputUtil {
             const chaincodes: Map<string, Array<string>> = await connection.getInstalledChaincode(peer);
             chaincodes.forEach((versions: string[], chaincodeName: string) => {
                 versions.forEach((version: string) => {
-                    const _package: PackageRegistryEntry = new PackageRegistryEntry({ name: chaincodeName, version: version, path: undefined });
+                    const _package: PackageRegistryEntry = new PackageRegistryEntry({ name: chaincodeName, version: version, path: undefined, sizeKB: undefined });
                     const data: { packageEntry: PackageRegistryEntry, workspace: vscode.WorkspaceFolder } = { packageEntry: _package, workspace: undefined };
                     const label: string = `${chaincodeName}@${version}`;
                     const foundItem: IBlockchainQuickPickItem<{ packageEntry: PackageRegistryEntry, workspace: vscode.WorkspaceFolder }> = tempQuickPickItems.find((item: IBlockchainQuickPickItem<{ packageEntry: PackageRegistryEntry, workspace: vscode.WorkspaceFolder }>) => {

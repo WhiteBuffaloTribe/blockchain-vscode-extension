@@ -28,6 +28,7 @@ import { EnvironmentFactory } from '../../extension/fabric/environments/Environm
 import { RuntimeTreeItem } from '../../extension/explorer/runtimeOps/disconnectedTree/RuntimeTreeItem';
 import { LocalEnvironment } from '../../extension/fabric/environments/LocalEnvironment';
 import { BlockchainEnvironmentExplorerProvider } from '../../extension/explorer/environmentExplorer';
+import { LocalEnvironmentManager } from '../../extension/fabric/environments/LocalEnvironmentManager';
 chai.should();
 
 // tslint:disable no-unused-expression
@@ -38,6 +39,7 @@ describe('restartFabricRuntime', () => {
     let getGatewayRegistryEntryStub: sinon.SinonStub;
     let getEnvironmentRegistryEntryStub: sinon.SinonStub;
     let logSpy: sinon.SinonSpy;
+    let popupStub: sinon.SinonStub;
     let restartStub: sinon.SinonStub;
     let executeCommandSpy: sinon.SinonSpy;
     let getConnectionStub: sinon.SinonStub;
@@ -53,6 +55,8 @@ describe('restartFabricRuntime', () => {
 
         await TestUtil.setupLocalFabric();
 
+        await LocalEnvironmentManager.instance().ensureRuntime(FabricRuntimeUtil.LOCAL_FABRIC, undefined, 1);
+
         const localGateway: FabricGatewayRegistryEntry = await FabricGatewayRegistry.instance().get(`${FabricRuntimeUtil.LOCAL_FABRIC} - Org1`);
 
         getGatewayRegistryEntryStub = sandbox.stub(FabricGatewayConnectionManager.instance(), 'getGatewayRegistryEntry');
@@ -66,6 +70,7 @@ describe('restartFabricRuntime', () => {
         getEnvironmentRegistryEntryStub.returns(localEnvironment);
 
         logSpy = sandbox.spy(VSCodeBlockchainOutputAdapter.instance(), 'log');
+        popupStub = sandbox.stub(UserInputUtil, 'failedNetworkStart').resolves();
         executeCommandSpy = sandbox.spy(vscode.commands, 'executeCommand');
 
         localRegistryEntry = await FabricEnvironmentRegistry.instance().get(FabricRuntimeUtil.LOCAL_FABRIC);
@@ -77,6 +82,12 @@ describe('restartFabricRuntime', () => {
     afterEach(async () => {
         sandbox.restore();
         await connectionRegistry.clear();
+    });
+
+    it('should do nothing and report a warning on Eclipse Che', async () => {
+        sandbox.stub(ExtensionUtil, 'isChe').returns(true);
+        await vscode.commands.executeCommand(ExtensionCommands.RESTART_FABRIC_SHORT);
+        logSpy.should.have.been.calledWithExactly(LogType.ERROR, sinon.match(/not supported/));
     });
 
     it('should restart a Fabric environment from the tree', async () => {
@@ -193,7 +204,7 @@ describe('restartFabricRuntime', () => {
 
         await vscode.commands.executeCommand(ExtensionCommands.RESTART_FABRIC);
 
-        showFabricEnvironmentQuickPickBoxStub.should.have.been.calledOnceWithExactly('Select an environment to restart', false, true, true, IncludeEnvironmentOptions.ALLENV, true);
+        showFabricEnvironmentQuickPickBoxStub.should.have.been.calledOnceWithExactly('Select an environment to restart', false, true, true, IncludeEnvironmentOptions.ALLENV, true, undefined, true);
         restartStub.should.have.been.called.calledOnceWithExactly(VSCodeBlockchainOutputAdapter.instance());
 
         executeCommandSpy.should.not.have.been.calledWith(ExtensionCommands.DISCONNECT_GATEWAY);
@@ -229,9 +240,8 @@ describe('restartFabricRuntime', () => {
 
         executeCommandSpy.should.not.have.been.calledWith(ExtensionCommands.DISCONNECT_GATEWAY);
         executeCommandSpy.should.not.have.been.calledWith(ExtensionCommands.DISCONNECT_ENVIRONMENT);
-
-        logSpy.getCall(0).should.have.been.calledWithExactly(LogType.INFO, undefined, 'restartFabricRuntime');
-        logSpy.getCall(1).should.have.been.calledWithExactly(LogType.ERROR, `Failed to restart ${environment.getName()}: ${error.message}`, `Failed to restart ${environment.getName()}: ${error.toString()}`);
+        popupStub.should.have.been.calledWithExactly(`Failed to restart ${environment.getName()}: ${error.message}`,
+                    `Failed to restart ${environment.getName()}: ${error.toString()}`);
     });
 
     it('should be able to restart the an environment from the command', async () => {
@@ -244,7 +254,7 @@ describe('restartFabricRuntime', () => {
 
         await vscode.commands.executeCommand(ExtensionCommands.RESTART_FABRIC);
 
-        showFabricEnvironmentQuickPickBoxStub.should.have.been.calledOnceWithExactly('Select an environment to restart', false, true, true, IncludeEnvironmentOptions.ALLENV, true);
+        showFabricEnvironmentQuickPickBoxStub.should.have.been.calledOnceWithExactly('Select an environment to restart', false, true, true, IncludeEnvironmentOptions.ALLENV, true, undefined, true);
 
         restartStub.should.have.been.called.calledOnceWithExactly(VSCodeBlockchainOutputAdapter.instance());
 
@@ -259,7 +269,7 @@ describe('restartFabricRuntime', () => {
 
         await vscode.commands.executeCommand(ExtensionCommands.RESTART_FABRIC);
 
-        showFabricEnvironmentQuickPickBoxStub.should.have.been.calledOnceWithExactly('Select an environment to restart', false, true, true, IncludeEnvironmentOptions.ALLENV, true);
+        showFabricEnvironmentQuickPickBoxStub.should.have.been.calledOnceWithExactly('Select an environment to restart', false, true, true, IncludeEnvironmentOptions.ALLENV, true, undefined, true);
 
         executeCommandSpy.should.not.have.been.calledWith(ExtensionCommands.DISCONNECT_GATEWAY);
         executeCommandSpy.should.not.have.been.calledWith(ExtensionCommands.DISCONNECT_ENVIRONMENT);
@@ -289,7 +299,7 @@ describe('restartFabricRuntime', () => {
 
         await vscode.commands.executeCommand(ExtensionCommands.RESTART_FABRIC);
 
-        showFabricEnvironmentQuickPickBoxStub.should.have.been.calledOnceWithExactly('Select an environment to restart', false, true, true, IncludeEnvironmentOptions.ALLENV, true);
+        showFabricEnvironmentQuickPickBoxStub.should.have.been.calledOnceWithExactly('Select an environment to restart', false, true, true, IncludeEnvironmentOptions.ALLENV, true, undefined, true);
 
         restartStub.should.have.been.called.calledOnceWithExactly(VSCodeBlockchainOutputAdapter.instance());
 

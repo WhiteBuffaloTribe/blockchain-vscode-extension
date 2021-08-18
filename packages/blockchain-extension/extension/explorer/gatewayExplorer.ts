@@ -43,6 +43,9 @@ import { LocalEnvironmentManager } from '../fabric/environments/LocalEnvironment
 import { LocalEnvironment } from '../fabric/environments/LocalEnvironment';
 import { ManagedAnsibleEnvironmentManager } from '../fabric/environments/ManagedAnsibleEnvironmentManager';
 import { ManagedAnsibleEnvironment } from '../fabric/environments/ManagedAnsibleEnvironment';
+import { GatewayTreeItem } from './model/GatewayTreeItem';
+import { GatewayGroupTreeItem } from './model/GatewayGroupTreeItem';
+import { ExplorerUtil } from '../util/ExplorerUtil';
 
 export class BlockchainGatewayExplorerProvider implements BlockchainExplorerProvider {
 
@@ -104,6 +107,11 @@ export class BlockchainGatewayExplorerProvider implements BlockchainExplorerProv
         try {
 
             if (element) {
+
+                if (element instanceof GatewayGroupTreeItem) {
+                    this.tree = await this.populateGateways(element.gateways);
+                }
+
                 // This won't be called before connecting to a gatewawy
                 if (element instanceof ChannelTreeItem) {
                     this.tree = [];
@@ -166,67 +174,71 @@ export class BlockchainGatewayExplorerProvider implements BlockchainExplorerProv
     }
 
     private async createConnectionTree(): Promise<BlockchainTreeItem[]> {
+
         const tree: BlockchainTreeItem[] = [];
 
-        const allGateways: FabricGatewayRegistryEntry[] = await this.fabricGatewayRegistry.getAll();
+        let allGateways: FabricGatewayRegistryEntry[] = await this.fabricGatewayRegistry.getAll();
+        allGateways = await this.updateGatewayEnvironmentGroup(allGateways);
 
-        if (allGateways.length === 0) {
+        const gatewayGroups: Array<FabricGatewayRegistryEntry[]> = [];
+        const otherGateways: Array<FabricGatewayRegistryEntry> = [];
+        for (const gateway of allGateways) {
+            if (gatewayGroups.length === 0) {
+                if (gateway.fromEnvironment || gateway.environmentGroup) {
+                    gatewayGroups.push([gateway]);
+                } else {
+                    otherGateways.push(gateway);
+                }
+                continue;
+            }
+
+            // Used to check if group exists already
+            const groupIndex: number = gatewayGroups.findIndex((group: FabricGatewayRegistryEntry[]) => {
+                if (gateway.fromEnvironment) {
+                    return gateway.fromEnvironment === group[0].fromEnvironment || gateway.fromEnvironment === group[0].environmentGroup;
+                } else if (gateway.environmentGroup) {
+                    return gateway.environmentGroup === group[0].fromEnvironment || gateway.environmentGroup === group[0].environmentGroup;
+                }
+            });
+
+            if (groupIndex !== -1) {
+                // If a group with the same fromEnvironment exists, then push gateway to the group
+                gatewayGroups[groupIndex].push(gateway);
+            } else {
+                if (gateway.fromEnvironment || gateway.environmentGroup) {
+                    // Create new group
+                    gatewayGroups.push([gateway]);
+                } else {
+                    // group gateways that don't belong to environments
+                    otherGateways.push(gateway);
+                }
+            }
+        }
+        if (otherGateways.length > 0) {
+            gatewayGroups.push(otherGateways);
+        }
+
+        if (gatewayGroups.length === 0) {
             tree.push(new TextTreeItem(this, 'No gateways found'));
         } else {
-            for (const gateway of allGateways) {
 
-                const command: vscode.Command = {
-                    command: ExtensionCommands.CONNECT_TO_GATEWAY,
-                    title: '',
-                    arguments: [gateway]
-                };
-
-                const gatewayName: string = gateway.displayName ? gateway.displayName : gateway.name;
-
-                let environmentEntry: FabricEnvironmentRegistryEntry;
-                let runtime: LocalEnvironment | ManagedAnsibleEnvironment;
-                if (gateway.fromEnvironment) {
-                    environmentEntry = await FabricEnvironmentRegistry.instance().get(gateway.fromEnvironment);
-
+            for (const group of gatewayGroups) {
+                let groupName: string = 'Other gateways';
+                if (group[0].fromEnvironment) {
+                    groupName = group[0].fromEnvironment;
+                } else if (group[0].environmentGroup) {
+                    groupName = group[0].environmentGroup;
                 }
-
-                if (environmentEntry && environmentEntry.managedRuntime) {
-
-                    if (environmentEntry.environmentType === EnvironmentType.LOCAL_ENVIRONMENT) {
-                        runtime = await LocalEnvironmentManager.instance().ensureRuntime(environmentEntry.name, undefined, environmentEntry.numberOfOrgs);
-                    } else {
-                        runtime = ManagedAnsibleEnvironmentManager.instance().ensureRuntime(environmentEntry.name, environmentEntry.environmentDirectory);
-                    }
-
-                    const treeItem: LocalGatewayTreeItem = await LocalGatewayTreeItem.newLocalGatewayTreeItem(
-                        this,
-                        gatewayName,
-                        gateway,
-                        vscode.TreeItemCollapsibleState.None,
-                        runtime,
-                        command
-                    );
-
-                    tree.push(treeItem);
-                } else if (gateway.associatedWallet) {
-                    tree.push(new GatewayAssociatedTreeItem(this,
-                        gatewayName,
-                        gateway,
-                        vscode.TreeItemCollapsibleState.None,
-                        command)
-                    );
-                } else {
-                    tree.push(new GatewayDissociatedTreeItem(this,
-                        gatewayName,
-                        gateway,
-                        vscode.TreeItemCollapsibleState.None,
-                        command)
-                    );
+                const groupTreeItem: GatewayGroupTreeItem = new GatewayGroupTreeItem(this, groupName, group, vscode.TreeItemCollapsibleState.Expanded);
+                if (groupName !== 'Other gateways') {
+                    groupTreeItem.iconPath = await ExplorerUtil.getGroupIcon(groupName);
                 }
+                tree.push(groupTreeItem);
             }
         }
 
         return tree;
+
     }
 
     private async createInstantiatedChaincodeTree(channelTreeElement: ChannelTreeItem): Promise<Array<InstantiatedTreeItem>> {
@@ -312,6 +324,63 @@ export class BlockchainGatewayExplorerProvider implements BlockchainExplorerProv
         return tree;
     }
 
+    private async populateGateways(gateways: FabricGatewayRegistryEntry[]): Promise<Array<GatewayTreeItem>> {
+
+        const tree: Array<GatewayTreeItem> = [];
+        for (const gateway of gateways) {
+            const command: vscode.Command = {
+                command: ExtensionCommands.CONNECT_TO_GATEWAY,
+                title: '',
+                arguments: [gateway]
+            };
+
+            const gatewayName: string = gateway.displayName ? gateway.displayName : gateway.name;
+
+            let environmentEntry: FabricEnvironmentRegistryEntry;
+            let runtime: LocalEnvironment | ManagedAnsibleEnvironment;
+            if (gateway.fromEnvironment) {
+                environmentEntry = await FabricEnvironmentRegistry.instance().get(gateway.fromEnvironment);
+
+            }
+
+            if (environmentEntry && environmentEntry.managedRuntime) {
+
+                if (environmentEntry.environmentType === EnvironmentType.LOCAL_ENVIRONMENT) {
+                    runtime = await LocalEnvironmentManager.instance().ensureRuntime(environmentEntry.name, undefined, environmentEntry.numberOfOrgs);
+                } else {
+                    runtime = ManagedAnsibleEnvironmentManager.instance().ensureRuntime(environmentEntry.name, environmentEntry.environmentDirectory);
+                }
+
+                const treeItem: LocalGatewayTreeItem = await LocalGatewayTreeItem.newLocalGatewayTreeItem(
+                    this,
+                    gatewayName,
+                    gateway,
+                    vscode.TreeItemCollapsibleState.None,
+                    runtime,
+                    command
+                );
+
+                tree.push(treeItem);
+            } else if (gateway.associatedWallet) {
+                tree.push(new GatewayAssociatedTreeItem(this,
+                    gatewayName,
+                    gateway,
+                    vscode.TreeItemCollapsibleState.None,
+                    command)
+                );
+            } else {
+                tree.push(new GatewayDissociatedTreeItem(this,
+                    gatewayName,
+                    gateway,
+                    vscode.TreeItemCollapsibleState.None,
+                    command)
+                );
+            }
+        }
+
+        return tree;
+    }
+
     private async createConnectedTree(): Promise<Array<BlockchainTreeItem>> {
 
         try {
@@ -319,7 +388,7 @@ export class BlockchainGatewayExplorerProvider implements BlockchainExplorerProv
 
             const connection: IFabricGatewayConnection = FabricGatewayConnectionManager.instance().getConnection();
             const gateway: FabricGatewayRegistryEntry = await FabricGatewayConnectionManager.instance().getGatewayRegistryEntry();
-            const gatewayName: string = gateway.displayName ? gateway.displayName : gateway.name;
+            const gatewayName: string = gateway.name;
 
             tree.push(new ConnectedTreeItem(this, `Connected via gateway: ${gatewayName}`, gateway, 0));
             tree.push(new ConnectedTreeItem(this, `Using ID: ${connection.identityName}`, gateway, 0));
@@ -337,7 +406,8 @@ export class BlockchainGatewayExplorerProvider implements BlockchainExplorerProv
         try {
             const connection: IFabricGatewayConnection = FabricGatewayConnectionManager.instance().getConnection();
 
-            const channelMap: Map<string, Array<string>> = await connection.createChannelMap();
+            const createChannelsResult: {channelMap: Map<string, string[]>, v2channels: string[]}  = await connection.createChannelMap();
+            const channelMap: Map<string, Array<string>> = createChannelsResult.channelMap;
             const channels: Array<string> = Array.from(channelMap.keys());
 
             const tree: Array<ChannelTreeItem> = [];
@@ -375,5 +445,18 @@ export class BlockchainGatewayExplorerProvider implements BlockchainExplorerProv
                 }
             });
         }
+    }
+
+    private async updateGatewayEnvironmentGroup(gatewayRegistryEntries: FabricGatewayRegistryEntry[]): Promise<FabricGatewayRegistryEntry[]> {
+        for (const gateway of gatewayRegistryEntries) {
+            if (gateway.environmentGroup) {
+                const envExists: boolean = await FabricEnvironmentRegistry.instance().exists(gateway.environmentGroup);
+                if (!envExists) {
+                    delete gateway.environmentGroup;
+                    await FabricGatewayRegistry.instance().update(gateway);
+                }
+            }
+        }
+        return gatewayRegistryEntries;
     }
 }

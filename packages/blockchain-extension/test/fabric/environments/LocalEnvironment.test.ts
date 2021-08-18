@@ -99,6 +99,7 @@ describe('LocalEnvironment', () => {
         await vscode.workspace.getConfiguration().update(SettingConfigurations.FABRIC_RUNTIME, localSetting,  vscode.ConfigurationTarget.Global);
 
         stopLogsStub = sandbox.stub(LocalEnvironment.prototype, 'stopLogs').returns(undefined);
+
     });
 
     afterEach(async () => {
@@ -124,7 +125,6 @@ describe('LocalEnvironment', () => {
             });
 
             deleteSpy.should.have.been.calledOnceWithExactly(FabricRuntimeUtil.LOCAL_FABRIC, true);
-
             addSpy.should.have.been.calledOnceWithExactly({
                 name: FabricRuntimeUtil.LOCAL_FABRIC,
                 managedRuntime: true,
@@ -151,7 +151,6 @@ describe('LocalEnvironment', () => {
             await environment.create();
 
             deleteSpy.should.have.been.calledOnceWithExactly(FabricRuntimeUtil.LOCAL_FABRIC, true);
-
             addSpy.should.have.been.calledOnceWithExactly({
                 name: FabricRuntimeUtil.LOCAL_FABRIC,
                 managedRuntime: true,
@@ -698,6 +697,8 @@ describe('LocalEnvironment', () => {
 
             await environment.updateUserSettings(FabricRuntimeUtil.LOCAL_FABRIC);
 
+            setting[FabricRuntimeUtil.LOCAL_FABRIC].ports = environment.ports;
+
             updateStub.should.have.been.calledWith(SettingConfigurations.FABRIC_RUNTIME, setting);
         });
 
@@ -859,35 +860,24 @@ describe('LocalEnvironment', () => {
             fakeStream.emit('data', { name: 'jake', line: 'simon dodges his unit tests' });
             outputAdapter.should.have.been.calledOnceWithExactly(LogType.INFO, undefined, `jake|simon dodges his unit tests`);
 
+            let formattedName: string = environment.getName().replace(/\s+/g, '');
+            formattedName += '_network';
+
             const opts: any = logHoseStub.args[0][0];
-            opts.attachFilter('someid', {
-                Name: '/something',
-                Config: {
-                    Labels: {
 
-                    }
-                }
-            }).should.be.false;
-            opts.attachFilter('someid', {
-                Name: '/something',
-                Config: {
-                    Labels: {
-                        'fabric-environment-name': 'jake'
-                    }
-                }
-            }).should.be.false;
-            opts.attachFilter('someid', {
-                Name: '/something',
-                Config: {
-                    Labels: {
-                        'fabric-environment-name': FabricRuntimeUtil.LOCAL_FABRIC
-                    }
-                }
-            }).should.be.true;
+            let networkObject: any = {NetworkSettings: {Networks: {}}};
+            networkObject.NetworkSettings.Networks[formattedName] = {
+                some: 'stuff'
+            };
 
-            opts.attachFilter('someid', {
-                Name: '/fabricvscodelocalfabric'
-            }).should.be.true;
+            opts.attachFilter('someid', networkObject).should.be.true;
+
+            networkObject = {NetworkSettings: {Networks: {}}};
+            networkObject.NetworkSettings.Networks['someothername'] = {
+                some: 'stuff'
+            };
+            opts.attachFilter('someid', networkObject).should.be.false;
+
         });
     });
 

@@ -79,7 +79,7 @@ describe('OpenTransactionViewCommand', () => {
 
             const map: Map<string, Array<string>> = new Map<string, Array<string>>();
             map.set('myChannel', ['peerOne']);
-            fabricClientConnectionMock.createChannelMap.resolves(map);
+            fabricClientConnectionMock.createChannelMap.resolves({channelMap: map, v2channels: []});
             fabricConnectionManager = FabricGatewayConnectionManager.instance();
             getConnectionStub = mySandBox.stub(fabricConnectionManager, 'getConnection').returns(fabricClientConnectionMock);
 
@@ -155,8 +155,8 @@ describe('OpenTransactionViewCommand', () => {
 
         it(`should correctly display the ${FabricRuntimeUtil.LOCAL_FABRIC} gateway name`, async () => {
             const localGatewayRegistryEntry: FabricGatewayRegistryEntry = new FabricGatewayRegistryEntry();
-            localGatewayRegistryEntry.name = `Org1`;
-            localGatewayRegistryEntry.displayName = `${FabricRuntimeUtil.LOCAL_FABRIC} - Org1`;
+            localGatewayRegistryEntry.name = `${FabricRuntimeUtil.LOCAL_FABRIC} - Org1`;
+            localGatewayRegistryEntry.displayName = `Org1`;
             getGatewayRegistryStub.resolves(localGatewayRegistryEntry);
 
             await vscode.commands.executeCommand(ExtensionCommands.OPEN_TRANSACTION_PAGE);

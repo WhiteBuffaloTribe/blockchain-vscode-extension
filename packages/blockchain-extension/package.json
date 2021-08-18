@@ -12,7 +12,7 @@
     ],
     "homepage": "https://www.ibm.com/blockchain",
     "license": "Apache-2.0",
-    "version": "1.0.21",
+    "version": "1.0.41",
     "publisher": "IBMBlockchain",
     "icon": "resources/blockchain_marketplace.png",
     "galleryBanner": {
@@ -65,6 +65,7 @@
             "aPackagesExplorer.exportSmartContractPackageEntry",
             "aPackagesExplorer.importSmartContractPackageEntry",
             "aPackagesExplorer.refreshEntry",
+            "aPackagesExplorer.viewPackageInformationEntry",
             "environmentExplorer.addEnvironmentEntry",
             "environmentExplorer.importNodesEntry",
             "environmentExplorer.deleteEnvironmentEntry",
@@ -78,6 +79,7 @@
             "environmentExplorer.instantiateSmartContractEntry",
             "environmentExplorer.refreshEntry",
             "environmentExplorer.startFabricRuntime",
+            "environmentExplorer.startFabricRuntimeShort",
             "environmentExplorer.stopFabricRuntime",
             "environmentExplorer.stopFabricRuntimeShort",
             "environmentExplorer.restartFabricRuntime",
@@ -86,6 +88,7 @@
             "environmentExplorer.teardownFabricRuntimeShort",
             "environmentExplorer.upgradeSmartContractEntry",
             "environmentExplorer.createNewIdentityEntry",
+            "environmentExplorer.openConsoleInBrowserEntry",
             "walletExplorer.refreshEntry",
             "walletExplorer.addWalletEntry",
             "walletExplorer.addWalletIdentityEntry",
@@ -94,11 +97,16 @@
             "walletExplorer.exportWalletEntry",
             "gatewaysExplorer.associateTransactionDataDirectoryEntry",
             "gatewaysExplorer.dissociateTransactionDataDirectoryEntry",
+            "gatewaysExplorer.subscribeToEventEntry",
+            "gatewaysExplorer.exportAppData",
             "extensionHome.open",
             "preReq.open",
             "releaseNotes.open",
             "tutorialGallery.open",
-            "transactionPage.open"
+            "transactionPage.open",
+            "tutorial.save",
+            "manageFeatureFlags",
+            "deleteExtensionDirectory"
         ]
     },
     "main": "./build/extension/extension",
@@ -196,6 +204,21 @@
                     "type": "boolean",
                     "default": true,
                     "description": "Allow this extension to use Docker and Docker Compose to run a simple pre-configured local Hyperledger Fabric network.\n\nIf you change this setting whilst the Prerequistes page is open, you may need to close it and re-open it for the changes to take effect."
+                },
+                "ibm-blockchain-platform.ext.PollForConfigUpdatesWhenConnectedToIBM BlockchainPlatformOnIBM CloudEnvironments": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Disabling this option prevents repeated prompts when not logged in to IBM Cloud. You will still be asked to log in if you try to perform an action that requires you to be logged in (e.g. editing node filters)."
+                },
+                "ibm-blockchain-platform.ext.featureFlags": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Enable or disable experimental features in the IBM Blockchain Platform extension"
+                },
+                "ibm-blockchain-platform.ext.discoverSaasEnvs": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Enable or disable automatic discovery of IBM Cloud environments in the IBM Blockchain Platform extension"
                 }
             }
         },
@@ -208,6 +231,11 @@
                     "light": "resources/blockchain_marketplace.png",
                     "dark": "resources/blockchain_marketplace.png"
                 }
+            },
+            {
+                "command": "tutorial.save",
+                "title": "Save Tutorial",
+                "category": "IBM Blockchain Platform"
             },
             {
                 "command": "sample.open",
@@ -401,6 +429,11 @@
                 "category": "IBM Blockchain Platform"
             },
             {
+                "command": "environmentExplorer.startFabricRuntimeShort",
+                "title": "Start",
+                "category": "IBM Blockchain Platform"
+            },
+            {
                 "command": "environmentExplorer.stopFabricRuntime",
                 "title": "Stop Fabric Runtime",
                 "category": "IBM Blockchain Platform"
@@ -431,6 +464,11 @@
                 "category": "IBM Blockchain Platform"
             },
             {
+                "command": "environmentExplorer.openConsoleInBrowserEntry",
+                "title": "Open Console in Browser",
+                "category": "IBM Blockchain Platform"
+            },
+            {
                 "command": "aPackagesExplorer.deleteSmartContractPackageEntry",
                 "title": "Delete Package",
                 "category": "IBM Blockchain Platform"
@@ -443,6 +481,11 @@
             {
                 "command": "aPackagesExplorer.importSmartContractPackageEntry",
                 "title": "Import a Package",
+                "category": "IBM Blockchain Platform"
+            },
+            {
+                "command": "aPackagesExplorer.viewPackageInformationEntry",
+                "title": "View Package Information",
                 "category": "IBM Blockchain Platform"
             },
             {
@@ -537,6 +580,26 @@
                 "command": "gatewaysExplorer.dissociateTransactionDataDirectoryEntry",
                 "title": "Dissociate Directory For Transaction Data",
                 "category": "IBM Blockchain Platform"
+            },
+            {
+                "command": "gatewaysExplorer.subscribeToEventEntry",
+                "title": "Subscribe to Events",
+                "category": "IBM Blockchain Platform"
+            },
+            {
+                "command": "gatewaysExplorer.exportAppData",
+                "title": "Export Application Data...",
+                "category": "IBM Blockchain Platform"
+            },
+            {
+                "command": "manageFeatureFlags",
+                "title": "Enable or disable experimental features",
+                "category": "IBM Blockchain Platform"
+            },
+            {
+                "command": "deleteExtensionDirectory",
+                "title": "Delete Extension Directory",
+                "category": "IBM Blockchain Platform"
             }
         ],
         "menus": {
@@ -548,7 +611,7 @@
                     "group": "navigation"
                 }
             ],
-            "debug/toolbar": [
+            "debug/toolBar": [
                 {
                     "command": "debug.commandList",
                     "when": "blockchain-debug",
@@ -561,12 +624,20 @@
                     "when": "false"
                 },
                 {
+                    "command": "tutorial.save",
+                    "when": "false"
+                },
+                {
                     "command": "tutorial.open",
                     "when": "false"
                 },
                 {
                     "command": "debug.commandList",
                     "when": "false"
+                },
+                {
+                    "command": "gatewaysExplorer.exportAppData",
+                    "when": "exportAppData"
                 },
                 {
                     "command": "gatewaysExplorer.exportConnectionProfileConnectedEntry",
@@ -591,6 +662,26 @@
                 {
                     "command": "environmentExplorer.deleteEnvironmentEntryShort",
                     "when": "false"
+                },
+                {
+                    "command": "environmentExplorer.startFabricRuntimeShort",
+                    "when": "false"
+                },
+                {
+                    "command": "environmentExplorer.startFabricRuntime",
+                    "when": "local-fabric-enabled"
+                },
+                {
+                    "command": "environmentExplorer.stopFabricRuntime",
+                    "when": "local-fabric-enabled"
+                },
+                {
+                    "command": "environmentExplorer.restartFabricRuntime",
+                    "when": "local-fabric-enabled"
+                },
+                {
+                    "command": "environmentExplorer.teardownFabricRuntime",
+                    "when": "local-fabric-enabled"
                 }
             ],
             "view/title": [
@@ -674,6 +765,11 @@
                     "group": "blockchain"
                 },
                 {
+                    "command": "environmentExplorer.openConsoleInBrowserEntry",
+                    "when": "view == environmentExplorer && blockchain-opstool-connected",
+                    "group": "blockchain"
+                },
+                {
                     "command": "walletExplorer.refreshEntry",
                     "when": "view == walletExplorer",
                     "group": "navigation"
@@ -706,12 +802,20 @@
                     "when": "view == aPackagesExplorer && viewItem == blockchain-package-item"
                 },
                 {
+                    "command": "aPackagesExplorer.viewPackageInformationEntry",
+                    "when": "view == aPackagesExplorer && viewItem == blockchain-package-item"
+                },
+                {
                     "command": "environmentExplorer.deleteEnvironmentEntry",
                     "when": "false"
                 },
                 {
                     "command": "environmentExplorer.deleteEnvironmentEntryShort",
-                    "when": "view == environmentExplorer && viewItem == blockchain-environment-item || view == environmentExplorer && viewItem == blockchain-runtime-item"
+                    "when": "view == environmentExplorer && viewItem == blockchain-environment-item || view == environmentExplorer && viewItem == blockchain-runtime-item-running || view == environmentExplorer && viewItem == blockchain-runtime-item"
+                },
+                {
+                    "command": "environmentExplorer.startFabricRuntimeShort",
+                    "when": "view == environmentExplorer && viewItem == blockchain-runtime-item"
                 },
                 {
                     "command": "environmentExplorer.stopFabricRuntime",
@@ -719,11 +823,7 @@
                 },
                 {
                     "command": "environmentExplorer.stopFabricRuntimeShort",
-                    "when": "view == environmentExplorer && viewItem == blockchain-runtime-item"
-                },
-                {
-                    "command": "environmentExplorer.restartFabricRuntime",
-                    "when": "false"
+                    "when": "view == environmentExplorer && viewItem == blockchain-runtime-item-running"
                 },
                 {
                     "command": "environmentExplorer.restartFabricRuntime",
@@ -731,7 +831,7 @@
                 },
                 {
                     "command": "environmentExplorer.restartFabricRuntimeShort",
-                    "when": "view == environmentExplorer && viewItem == blockchain-runtime-item"
+                    "when": "view == environmentExplorer && viewItem == blockchain-runtime-item-running"
                 },
                 {
                     "command": "environmentExplorer.teardownFabricRuntime",
@@ -739,7 +839,7 @@
                 },
                 {
                     "command": "environmentExplorer.teardownFabricRuntimeShort",
-                    "when": "view == environmentExplorer && viewItem == blockchain-runtime-item"
+                    "when": "view == environmentExplorer && viewItem == blockchain-runtime-item-running || view == environmentExplorer && viewItem == blockchain-runtime-item"
                 },
                 {
                     "command": "environmentExplorer.deleteNodeEntry",
@@ -756,7 +856,7 @@
                 {
                     "command": "environmentExplorer.installSmartContractEntry",
                     "when": "view == environmentExplorer && viewItem == blockchain-runtime-installed-item"
-                },                         
+                },
                 {
                     "command": "environmentExplorer.instantiateSmartContractEntry",
                     "when": "view == environmentExplorer && viewItem == blockchain-channel-item || viewItem == blockchain-runtime-instantiated-item"
@@ -786,6 +886,10 @@
                     "when": "view == environmentExplorer && viewItem == blockchain-peer-item && blockchain-environment-connected && !blockchain-runtime-connected"
                 },
                 {
+                    "command": "environmentExplorer.openConsoleInBrowserEntry",
+                    "when": "view == environmentExplorer && viewItem == blockchain-environment-item"
+                },
+                {
                     "command": "gatewaysExplorer.testSmartContractEntry",
                     "when": "view == gatewaysExplorer && viewItem == blockchain-instantiated-multi-contract-item || viewItem == blockchain-instantiated-contract-item || viewItem == blockchain-contract-item || viewItem == blockchain-instantiated-unknown-item || viewItem == blockchain-instantiated-associated-item || viewItem == blockchain-instantiated-associated-contract-item || viewItem == blockchain-instantiated-associated-multi-contract-item || viewItem == blockchain-instantiated-associated-chaincode-item"
                 },
@@ -796,6 +900,14 @@
                 {
                     "command": "gatewaysExplorer.dissociateTransactionDataDirectoryEntry",
                     "when": "view == gatewaysExplorer && viewItem == blockchain-instantiated-associated-multi-contract-item || viewItem == blockchain-instantiated-associated-contract-item || viewItem == blockchain-instantiated-associated-chaincode-item || viewItem == blockchain-instantiated-associated-item"
+                },
+                {
+                    "command": "gatewaysExplorer.subscribeToEventEntry",
+                    "when": "view == gatewaysExplorer && viewItem == blockchain-instantiated-multi-contract-item || viewItem == blockchain-instantiated-contract-item || viewItem == blockchain-contract-item || viewItem == blockchain-instantiated-unknown-item || viewItem == blockchain-instantiated-associated-item || viewItem == blockchain-instantiated-associated-contract-item || viewItem == blockchain-instantiated-associated-multi-contract-item || viewItem == blockchain-instantiated-associated-chaincode-item"
+                },
+                {
+                    "command": "gatewaysExplorer.exportAppData",
+                    "when": "view == gatewaysExplorer && viewItem == blockchain-instantiated-multi-contract-item && exportAppData || viewItem == blockchain-instantiated-contract-item && exportAppData || viewItem == blockchain-contract-item && exportAppData || viewItem == blockchain-instantiated-unknown-item && exportAppData || viewItem == blockchain-instantiated-associated-item && exportAppData || viewItem == blockchain-instantiated-associated-contract-item && exportAppData || viewItem == blockchain-instantiated-associated-multi-contract-item && exportAppData || viewItem == blockchain-instantiated-associated-chaincode-item && exportAppData"
                 },
                 {
                     "command": "transactionPage.open",
@@ -1316,15 +1428,15 @@
     "scripts": {
         "vscode:prepublish": "npm run compile && npm run localize",
         "package": "node ./node_modules/vsce/out/vsce package",
-        "compile": "rimraf build && npm run build && npm run lint && npm run licchk",
-        "watch": "rimraf build && tsc -watch -p ./tsconfig.extension.json",
+        "compile": "rimraf build && npm run build && node ./scripts/copyFiles.js && npm run lint && npm run licchk",
+        "watch": "rimraf build && tsc -watch",
         "pretest": "npm run updatePackageJSON",
         "test": "node ./build/test/runTests.js",
         "posttest": "remap-istanbul -i ./coverage/coverage.json -o ./coverage/coverage-remap.json && istanbul check-coverage ./coverage/coverage-remap.json",
-        "cucumber": "node ./build/cucumber/runCucumberTests.js",
+        "cucumber": "npm run updatePackageJSON && node ./build/cucumber/runCucumberTests.js",
         "cucumberReport": "node ./build/cucumber/generate-cucumber-report.js",
         "licchk": "license-check-and-add",
-        "tslint": "tslint --project tsconfig.extension.json",
+        "tslint": "tslint",
         "lint": "npm run tslint 'src/**/*.ts' 'test/**/*.test.ts' 'cucumber/**/*.ts'",
         "updatePackageJSON": "node ../../.azure/rewritePackageJson.js",
         "productionFlag": "node ../../.azure/rewritePackageJson.js publish",
@@ -1332,7 +1444,7 @@
         "cucumberTests": "./cucumber/hlfv1/start.sh",
         "cucumberAnsibleTests": "./cucumber/ansibleScripts/start.sh",
         "localize": "vscl build/src/**/*.js",
-        "build": "tsc -p tsconfig.extension.json"
+        "build": "tsc && cp -r ../blockchain-ui/build/static ./build"
     },
     "devDependencies": {
         "@types/chai": "4.1.4",
@@ -1350,19 +1462,20 @@
         "@types/tmp": "0.0.33",
         "@types/vscode": "1.38.0",
         "angular-tslint-rules": "1.5.0",
+        "axios-mock-adapter": "^1.18.1",
         "chai": "4.1.2",
         "chai-as-promised": "7.1.1",
         "cucumber": "2.2.0",
-        "multiple-cucumber-html-reporter": "1.15.1",
         "decache": "4.4.0",
         "glob": "7.1.2",
-        "grpc": "^1.23.3",
+        "grpc": "1.24.2",
         "istanbul": "0.4.5",
         "js-yaml": "3.13.1",
         "license-check-and-add": "2.3.6",
         "mocha": "^6.1.4",
         "mocha-junit-reporter": "^1.23.1",
         "mocha-multi-reporters": "^1.1.7",
+        "multiple-cucumber-html-reporter": "1.15.1",
         "raf": "^3.4.1",
         "react-scripts": "^3.3.1",
         "remap-istanbul": "0.11.1",
@@ -1389,14 +1502,14 @@
         "ejs": "^2.6.1",
         "find-free-port": "^2.0.0",
         "fs-extra": "^7.0.1",
-        "generator-fabric": "0.1.11",
+        "generator-fabric": "0.1.13",
         "handlebars": "^4.5.3",
         "home-dir": "1.0.0",
-        "ibm-blockchain-platform-common": "^1.0.21",
-        "ibm-blockchain-platform-environment-v1": "^1.0.21",
-        "ibm-blockchain-platform-gateway-v1": "^1.0.21",
-        "ibm-blockchain-platform-ui": "^1.0.21",
-        "ibm-blockchain-platform-wallet": "^1.0.21",
+        "ibm-blockchain-platform-common": "^1.0.41",
+        "ibm-blockchain-platform-environment-v1": "^1.0.41",
+        "ibm-blockchain-platform-gateway-v1": "^1.0.41",
+        "ibm-blockchain-platform-ui": "^1.0.41",
+        "ibm-blockchain-platform-wallet": "^1.0.41",
         "request": "^2.88.0",
         "semver": "^6.3.0",
         "shelljs": "^0.8.3",
@@ -1412,7 +1525,7 @@
         "grpc"
     ],
     "extensionPack": [
-        "oshri6688.javascript-test-runner"
+        "IBM.ibmcloud-account"
     ],
     "license-check-and-add-config": {
         "folder": ".",
@@ -1463,7 +1576,8 @@
             "templates/PreReqView.ejs",
             "tutorials",
             "docker",
-            "package.json.orig"
+            "package.json.orig",
+            "unit-tests.xml"
         ],
         "file_type_method": "EXCLUDE",
         "file_types": [
@@ -1482,7 +1596,8 @@
             ".log",
             ".pid",
             ".port",
-            ".feature"
+            ".feature",
+            ".xml"
         ],
         "insert_license": false,
         "clear_license": false,

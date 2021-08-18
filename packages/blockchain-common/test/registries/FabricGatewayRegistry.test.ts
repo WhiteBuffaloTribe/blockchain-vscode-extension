@@ -23,6 +23,7 @@ import { FabricGatewayRegistryEntry } from '../../src/registries/FabricGatewayRe
 import { FabricRuntimeUtil } from '../../src/util/FabricRuntimeUtil';
 import { FabricEnvironmentRegistry } from '../../src/registries/FabricEnvironmentRegistry';
 import { FabricEnvironmentRegistryEntry, EnvironmentType } from '../../src/registries/FabricEnvironmentRegistryEntry';
+import { MicrofabEnvironment } from '../../src/environments/MicrofabEnvironment';
 
 // tslint:disable no-unused-expression
 chai.should();
@@ -32,6 +33,7 @@ describe('FabricGatewayRegistry', () => {
 
     const registry: FabricGatewayRegistry = FabricGatewayRegistry.instance();
     const environmentRegistry: FabricEnvironmentRegistry = FabricEnvironmentRegistry.instance();
+    let sandbox: sinon.SinonSandbox;
 
     before(async () => {
         const registryPath: string = path.join(__dirname, 'tmp', 'registries');
@@ -42,11 +44,13 @@ describe('FabricGatewayRegistry', () => {
     beforeEach(async () => {
         await registry.clear();
         await environmentRegistry.clear();
+        sandbox = sinon.createSandbox();
     });
 
     afterEach(async () => {
         await registry.clear();
         await environmentRegistry.clear();
+        sandbox.restore();
     });
 
     it('should get all the gateways and put local fabrics first', async () => {
@@ -60,8 +64,8 @@ describe('FabricGatewayRegistry', () => {
         await FabricEnvironmentRegistry.instance().add({name: FabricRuntimeUtil.LOCAL_FABRIC, environmentDirectory: '', environmentType: EnvironmentType.LOCAL_ENVIRONMENT, numberOfOrgs: 1, managedRuntime: true});
         await FabricEnvironmentRegistry.instance().add({name: 'otherLocalEnv', environmentType: EnvironmentType.LOCAL_ENVIRONMENT, managedRuntime: true, environmentDirectory : '', numberOfOrgs: 1});
 
-        const localFabricEntry: FabricGatewayRegistryEntry = new FabricGatewayRegistryEntry({ name: FabricRuntimeUtil.LOCAL_FABRIC, fromEnvironment: FabricRuntimeUtil.LOCAL_FABRIC, associatedWallet: 'Org1', displayName: `${FabricRuntimeUtil.LOCAL_FABRIC} - Org1` });
-        const otherLocalEntry: FabricGatewayRegistryEntry = new FabricGatewayRegistryEntry({ name: 'otherLocal', fromEnvironment: 'otherLocalEnv', associatedWallet: 'Org1', displayName: `otherLocal - Org1` });
+        const localFabricEntry: FabricGatewayRegistryEntry = new FabricGatewayRegistryEntry({ name: FabricRuntimeUtil.LOCAL_FABRIC, fromEnvironment: FabricRuntimeUtil.LOCAL_FABRIC, associatedWallet: 'Org1', displayName: `Org1` });
+        const otherLocalEntry: FabricGatewayRegistryEntry = new FabricGatewayRegistryEntry({ name: 'otherLocal', fromEnvironment: 'otherLocalEnv', associatedWallet: 'Org1', displayName: `Org1` });
 
         await registry.add(gatewayOne);
         await registry.add(localFabricEntry);
@@ -82,8 +86,8 @@ describe('FabricGatewayRegistry', () => {
         await FabricEnvironmentRegistry.instance().add({name: FabricRuntimeUtil.LOCAL_FABRIC, environmentDirectory: '', environmentType: EnvironmentType.LOCAL_ENVIRONMENT, managedRuntime: true});
         await FabricEnvironmentRegistry.instance().add({name: 'otherLocalEnv', environmentType: EnvironmentType.LOCAL_ENVIRONMENT, managedRuntime: true, environmentDirectory : ''});
 
-        const localFabricEntry: FabricGatewayRegistryEntry = new FabricGatewayRegistryEntry({ name: FabricRuntimeUtil.LOCAL_FABRIC, fromEnvironment: FabricRuntimeUtil.LOCAL_FABRIC, associatedWallet: 'Org1', displayName: `${FabricRuntimeUtil.LOCAL_FABRIC} - Org1` });
-        const otherLocalEntry: FabricGatewayRegistryEntry = new FabricGatewayRegistryEntry({ name: 'otherLocal', fromEnvironment: 'otherLocalEnv', associatedWallet: 'Org1', displayName: `otherLocal - Org1` });
+        const localFabricEntry: FabricGatewayRegistryEntry = new FabricGatewayRegistryEntry({ name: FabricRuntimeUtil.LOCAL_FABRIC, fromEnvironment: FabricRuntimeUtil.LOCAL_FABRIC, associatedWallet: 'Org1', displayName: `Org1` });
+        const otherLocalEntry: FabricGatewayRegistryEntry = new FabricGatewayRegistryEntry({ name: 'otherLocal', fromEnvironment: 'otherLocalEnv', associatedWallet: 'Org1', displayName: `Org1` });
 
         await registry.add(gatewayOne);
         await registry.add(localFabricEntry);
@@ -101,17 +105,41 @@ describe('FabricGatewayRegistry', () => {
 
         await registry.add(gatewayOne);
 
-        await environmentRegistry.add(new FabricEnvironmentRegistryEntry({ name: 'myEnvironment', environmentDirectory: path.join('test', 'data', 'nonManagedAnsible'), environmentType: EnvironmentType.ANSIBLE_ENVIRONMENT, managedRuntime: false }));
+        await environmentRegistry.add(new FabricEnvironmentRegistryEntry({
+            name: 'ansibleEnvironment',
+            environmentDirectory: path.join('test', 'data', 'nonManagedAnsible'),
+            environmentType: EnvironmentType.ANSIBLE_ENVIRONMENT,
+            managedRuntime: false
+        }));
+        await environmentRegistry.add(new FabricEnvironmentRegistryEntry({
+            name: 'microfabEnvironment',
+            environmentDirectory: path.join('test', 'data', 'microfab'),
+            environmentType: EnvironmentType.MICROFAB_ENVIRONMENT,
+            managedRuntime: false,
+            url: 'http://console.microfab.example.org'
+        }));
+
+        const newMicrofabEnvironmentStub: sinon.SinonStub = sandbox.stub(FabricGatewayRegistry.instance(), 'newMicrofabEnvironment');
+        const mockMicrofabEnvironment: sinon.SinonStubbedInstance<MicrofabEnvironment> = sinon.createStubInstance(MicrofabEnvironment);
+        mockMicrofabEnvironment.getGateways.resolves([
+            {
+                name: 'microfabEnvironment - myGateway'
+            }
+        ]);
+        newMicrofabEnvironmentStub.callsFake((name: string, directory: string, url: string): sinon.SinonStubbedInstance<MicrofabEnvironment> => {
+            newMicrofabEnvironmentStub['wrappedMethod'](name, directory, url);
+            return mockMicrofabEnvironment;
+        });
 
         const entries: FabricGatewayRegistryEntry[] = await FabricGatewayRegistry.instance().getAll();
 
-        entries.length.should.equal(4);
+        entries.length.should.equal(5);
 
-        entries[0].should.deep.equal(gatewayOne);
-
-        entries[1].name.should.equal('myEnvironment - myGateway');
-        entries[2].name.should.equal('myEnvironment - yofn-org1');
-        entries[3].name.should.equal('myEnvironment - yofn-org2');
+        entries[0].name.should.equal('ansibleEnvironment - myGateway');
+        entries[1].name.should.equal('ansibleEnvironment - yofn-org1');
+        entries[2].name.should.equal('ansibleEnvironment - yofn-org2');
+        entries[3].should.deep.equal(gatewayOne);
+        entries[4].name.should.equal('microfabEnvironment - myGateway');
     });
 
     it('should update an unmanaged gateway', async () => {

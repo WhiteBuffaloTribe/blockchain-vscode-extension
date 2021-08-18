@@ -14,6 +14,7 @@
 
 import * as chai from 'chai';
 import * as path from 'path';
+import * as fs from 'fs-extra';
 import * as sinon from 'sinon';
 import * as chaiAsPromised from 'chai-as-promised';
 import { FabricWalletRegistryEntry } from '../../src/registries/FabricWalletRegistryEntry';
@@ -23,6 +24,8 @@ import { FabricEnvironmentRegistryEntry, EnvironmentType } from '../../src/regis
 import { FabricEnvironmentRegistry } from '../../src/registries/FabricEnvironmentRegistry';
 import { FileConfigurations } from '../../src/registries/FileConfigurations';
 import { FabricWalletGeneratorFactory } from '../../src/util/FabricWalletGeneratorFactory';
+import { MicrofabEnvironment } from '../../src/environments/MicrofabEnvironment';
+import { FileRegistry } from '../../src/registries/FileRegistry';
 
 chai.use(chaiAsPromised);
 chai.should();
@@ -52,14 +55,18 @@ describe('FabricWalletRegistry', () => {
 
     describe('getAll', () => {
 
+        let sandbox: sinon.SinonSandbox;
+
         beforeEach(async () => {
             await registry.clear();
             await environmentRegistry.clear();
+            sandbox = sinon.createSandbox();
         });
 
         afterEach(async () => {
             await registry.clear();
             await environmentRegistry.clear();
+            sandbox.restore();
         });
 
         it('should get all the wallets and put local fabric first', async () => {
@@ -121,15 +128,40 @@ describe('FabricWalletRegistry', () => {
 
             await registry.add(walletOne);
 
-            await environmentRegistry.add(new FabricEnvironmentRegistryEntry({ name: 'myEnvironment', environmentDirectory: path.join('test', 'data', 'nonManagedAnsible'), environmentType: EnvironmentType.ANSIBLE_ENVIRONMENT, managedRuntime: false }));
+            await environmentRegistry.add(new FabricEnvironmentRegistryEntry({
+                name: 'ansibleEnvironment',
+                environmentDirectory: path.join('test', 'data', 'nonManagedAnsible'),
+                environmentType: EnvironmentType.ANSIBLE_ENVIRONMENT,
+                managedRuntime: false
+            }));
+            await environmentRegistry.add(new FabricEnvironmentRegistryEntry({
+                name: 'microfabEnvironment',
+                environmentDirectory: path.join('test', 'data', 'microfab'),
+                environmentType: EnvironmentType.MICROFAB_ENVIRONMENT,
+                managedRuntime: false
+            }));
+
+            const newMicrofabEnvironmentStub: sinon.SinonStub = sandbox.stub(FabricWalletRegistry.instance(), 'newMicrofabEnvironment');
+            const mockMicrofabEnvironment: sinon.SinonStubbedInstance<MicrofabEnvironment> = sinon.createStubInstance(MicrofabEnvironment);
+            mockMicrofabEnvironment.getWalletsAndIdentities.resolves([
+                {
+                    name: 'myWallet',
+                    displayName: 'microfabEnvironment - myWallet'
+                }
+            ]);
+            newMicrofabEnvironmentStub.callsFake((name: string, directory: string, url: string): sinon.SinonStubbedInstance<MicrofabEnvironment> => {
+                newMicrofabEnvironmentStub['wrappedMethod'](name, directory, url);
+                return mockMicrofabEnvironment;
+            });
 
             const entries: FabricWalletRegistryEntry[] = await FabricWalletRegistry.instance().getAll();
 
-            entries.length.should.equal(2);
+            entries.length.should.equal(3);
 
-            entries[0].name.should.equal('myWallet');
+            entries[0].displayName.should.equal('ansibleEnvironment - myWallet');
+            entries[1].displayName.should.equal('microfabEnvironment - myWallet');
+            entries[2].should.deep.equal(walletOne);
 
-            entries[1].should.deep.equal(walletOne);
         });
 
         it('should get all including environments ones and set managed if from a managed environment', async () => {
@@ -186,12 +218,84 @@ describe('FabricWalletRegistry', () => {
             result.name.should.equal('myWallet');
         });
 
+        it('should get the wallet if it has environmentGroups', async () => {
+            walletOne.environmentGroups = ['myEnvironment'];
+            await FabricWalletRegistry.instance().update(walletOne);
+
+            const result: FabricWalletRegistryEntry = await FabricWalletRegistry.instance().get('walletOne');
+
+            result.should.deep.equal(walletOne);
+        });
+
+        it('should get the wallet if it has been associated with the env name', async () => {
+            walletOne.environmentGroups = ['myEnvironment'];
+            await FabricWalletRegistry.instance().update(walletOne);
+
+            const result: FabricWalletRegistryEntry = await FabricWalletRegistry.instance().get('walletOne', 'myEnvironment');
+
+            result.should.deep.equal(walletOne);
+        });
+
         it('should throw an error if does not exist', async () => {
             await FabricWalletRegistry.instance().get('blah', 'myEnvironment').should.eventually.be.rejectedWith(`Entry "blah" from environment "myEnvironment" in registry "${FileConfigurations.FABRIC_WALLETS}" does not exist`);
         });
 
         it('should throw an error if does not exist and no from environment', async () => {
             await FabricWalletRegistry.instance().get('blah').should.eventually.be.rejectedWith(`Entry "blah" in registry "${FileConfigurations.FABRIC_WALLETS}" does not exist`);
+        });
+    });
+
+    describe('update', () => {
+
+        let sandbox: sinon.SinonSandbox;
+
+        beforeEach(async () => {
+            await registry.clear();
+            await environmentRegistry.clear();
+            sandbox = sinon.createSandbox();
+        });
+
+        afterEach(async () => {
+            await registry.clear();
+            await environmentRegistry.clear();
+            sandbox.restore();
+        });
+
+        it('should call the super update function', async () => {
+            const updateStub: sinon.SinonStub = sandbox.stub(FileRegistry.prototype, 'update').resolves();
+
+            const walletOne: FabricWalletRegistryEntry = new FabricWalletRegistryEntry({
+                name: 'walletOne',
+                walletPath: 'myPath'
+            });
+
+            await registry.getAll().should.eventually.deep.equal([]);
+
+            await registry.add(walletOne);
+
+            await FabricWalletRegistry.instance().update(walletOne);
+
+            updateStub.should.have.been.calledWith(walletOne);
+        });
+
+        it('should write a config file if from an environment', async () => {
+            const ensureDirStub: sinon.SinonStub = sandbox.stub(fs, 'ensureDir').resolves(true);
+            const writeStub: sinon.SinonStub = sandbox.stub(fs, 'writeJSON').resolves();
+
+            const walletOne: FabricWalletRegistryEntry = new FabricWalletRegistryEntry({
+                name: 'walletOne',
+                walletPath: 'myPath',
+                fromEnvironment: 'myEnvironment'
+            });
+
+            await registry.getAll().should.eventually.deep.equal([]);
+
+            await registry.add(walletOne);
+
+            await FabricWalletRegistry.instance().update(walletOne);
+
+            ensureDirStub.should.have.been.calledWith(path.join(walletOne.walletPath));
+            writeStub.should.have.been.calledWith(path.join(walletOne.walletPath, '.config.json'), walletOne);
         });
     });
 });

@@ -67,8 +67,8 @@ describe('exportConnectionProfileCommand', () => {
 
         const provider: BlockchainGatewayExplorerProvider = ExtensionUtil.getBlockchainGatewayExplorerProvider();
         const allChildren: BlockchainTreeItem[] = await provider.getChildren();
-
-        gatewayTreeItem = allChildren[0] as GatewayTreeItem;
+        const groupChildren: BlockchainTreeItem[] = await provider.getChildren(allChildren[0]);
+        gatewayTreeItem = groupChildren[0] as GatewayTreeItem;
 
         workspaceFolder = {
             name: 'myFolder',
@@ -98,12 +98,26 @@ describe('exportConnectionProfileCommand', () => {
     });
 
     it('should export the connection profile by right clicking on a peer in the runtime ops tree', async () => {
+        // TODO: Jake FIX
         await vscode.commands.executeCommand(ExtensionCommands.EXPORT_CONNECTION_PROFILE, gatewayTreeItem);
         delete connectionProfile.wallet;
         showGatewayQuickPickStub.should.not.have.been.calledOnceWithExactly('Choose a gateway to export a connection profile from', false, true);
         writeFileStub.should.have.been.called.calledOnceWithExactly(fakeTargetPath, JSON.stringify(connectionProfile, null, 4));
         logSpy.should.have.been.calledWithExactly(LogType.SUCCESS, `Successfully exported connection profile to ${fakeTargetPath}`);
         sendTelemetryEventStub.should.have.been.calledOnceWithExactly('exportConnectionProfileCommand');
+    });
+
+    it('should apply Pascal case when exporting a connection', async () => {
+        const pathJoinSpy: sinon.SinonSpy = sandbox.spy(path, 'join');
+        const gatewayRegistryEntryPascal: FabricGatewayRegistryEntry = new FabricGatewayRegistryEntry();
+        gatewayRegistryEntryPascal.name = '1 my -gateway2';
+        sandbox.stub(FabricGatewayConnectionManager.instance(), 'getGatewayRegistryEntry').resolves(gatewayRegistryEntryPascal);
+        await vscode.commands.executeCommand(ExtensionCommands.EXPORT_CONNECTION_PROFILE, gatewayTreeItem, true);
+        delete connectionProfile.wallet;
+        writeFileStub.should.have.been.called.calledOnceWithExactly(fakeTargetPath, JSON.stringify(connectionProfile, null, 4));
+        logSpy.should.have.been.calledWithExactly(LogType.SUCCESS, `Successfully exported connection profile to ${fakeTargetPath}`);
+        sendTelemetryEventStub.should.have.been.calledOnceWithExactly('exportConnectionProfileCommand');
+        pathJoinSpy.should.have.been.calledWithExactly('/myPath', '1MyGateway2Connection.json');
     });
 
     it('should export the connection profile when called from the command palette', async () => {

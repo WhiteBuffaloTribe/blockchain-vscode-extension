@@ -24,6 +24,7 @@ import { SettingConfigurations } from '../../configurations';
 import { GlobalState, ExtensionData } from '../util/GlobalState';
 import { VSCodeBlockchainOutputAdapter } from '../logging/VSCodeBlockchainOutputAdapter';
 import { LogType } from 'ibm-blockchain-platform-common';
+import { Dependencies } from '../dependencies/Dependencies';
 
 export class PreReqView extends View {
 
@@ -118,7 +119,6 @@ export class PreReqView extends View {
                     if (message.systemRequirements) {
                         // They have accepted that Docker for Windows has been configured correctly.
                         const extensionData: ExtensionData = GlobalState.get();
-                        extensionData.systemRequirements = true;
                         dependencies.systemRequirements.complete = true;
 
                         // Update global state
@@ -192,6 +192,12 @@ export class PreReqView extends View {
 
         for (const _dependency of Object.keys(dependencies)) {
 
+            // Make node version requirements more readable
+            if (dependencies[_dependency].name === 'Node.js') {
+                const required: string = Dependencies.NODEJS_REQUIRED.replace(/<.*\|\|/, '||').replace(/<.*/, '');
+                dependencies[_dependency].requiredVersion  = required;
+            }
+            
             const isInstalled: boolean = dependencyManager.isValidDependency(dependencies[_dependency]);
             if (isInstalled) {
                 installedDependencies[_dependency] = dependencies[_dependency];

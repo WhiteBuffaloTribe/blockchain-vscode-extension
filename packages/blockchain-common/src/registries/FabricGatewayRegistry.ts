@@ -20,6 +20,7 @@ import { FileConfigurations } from '../registries/FileConfigurations';
 import { FileRegistry } from '../registries/FileRegistry';
 import { FabricEnvironmentRegistryEntry, EnvironmentType } from '../registries/FabricEnvironmentRegistryEntry';
 import { FabricEnvironmentRegistry } from '../registries/FabricEnvironmentRegistry';
+import { MicrofabEnvironment } from '../environments/MicrofabEnvironment';
 
 export class FabricGatewayRegistry extends FileRegistry<FabricGatewayRegistryEntry> {
 
@@ -65,27 +66,30 @@ export class FabricGatewayRegistry extends FileRegistry<FabricGatewayRegistryEnt
         const normalEntries: FabricGatewayRegistryEntry[] = await super.getEntries();
         const otherEntries: FabricGatewayRegistryEntry[] = [];
 
-        let environmentEntries: FabricEnvironmentRegistryEntry[] = await FabricEnvironmentRegistry.instance().getAll();
+        const environmentEntries: FabricEnvironmentRegistryEntry[] = await FabricEnvironmentRegistry.instance().getAll();
 
-        // just get the ansible ones
-        environmentEntries = environmentEntries.filter((entry: FabricEnvironmentRegistryEntry) => {
+        // Get gateways from all Ansible environments.
+        const ansibleEnvironmentEntries: FabricEnvironmentRegistryEntry[] = environmentEntries.filter((entry: FabricEnvironmentRegistryEntry) => {
             return entry.environmentType === EnvironmentType.ANSIBLE_ENVIRONMENT || entry.environmentType === EnvironmentType.LOCAL_ENVIRONMENT;
         });
+        for (const ansibleEnvironmentEntry of ansibleEnvironmentEntries) {
+            const environment: AnsibleEnvironment = new AnsibleEnvironment(ansibleEnvironmentEntry.name, ansibleEnvironmentEntry.environmentDirectory);
+            const gatewayEntries: FabricGatewayRegistryEntry[] = await environment.getGateways();
+            otherEntries.push(...gatewayEntries);
+        }
 
-        for (const environmentEntry of environmentEntries) {
-            const environment: AnsibleEnvironment = new AnsibleEnvironment(environmentEntry.name, environmentEntry.environmentDirectory);
+        // Get gateways from all Microfab environments.
+        const microfabEnvironmentEntries: FabricEnvironmentRegistryEntry[] = environmentEntries.filter((entry: FabricEnvironmentRegistryEntry) => {
+            return entry.environmentType === EnvironmentType.MICROFAB_ENVIRONMENT;
+        });
+        for (const microfabEnvironmentEntry of microfabEnvironmentEntries) {
+            const environment: MicrofabEnvironment = this.newMicrofabEnvironment(microfabEnvironmentEntry.name, microfabEnvironmentEntry.environmentDirectory, microfabEnvironmentEntry.url);
             const gatewayEntries: FabricGatewayRegistryEntry[] = await environment.getGateways();
             otherEntries.push(...gatewayEntries);
         }
 
         return [...normalEntries, ...otherEntries].sort((a: FabricGatewayRegistryEntry, b: FabricGatewayRegistryEntry): number => {
-            const aName: string = a.displayName ? a.displayName : a.name;
-            const bName: string = b.displayName ? b.displayName : b.name;
-            if (aName > bName) {
-                return 1;
-            } else {
-                return -1;
-            }
+            return a.name.localeCompare(b.name);
         });
     }
 
@@ -94,8 +98,14 @@ export class FabricGatewayRegistry extends FileRegistry<FabricGatewayRegistryEnt
             const connectionProfilePath: string = newEntry.connectionProfilePath;
             const gatewayFolderPath: string = connectionProfilePath.substr(0, connectionProfilePath.lastIndexOf('/'));
             await fs.writeJson(path.join(gatewayFolderPath, '.config.json'), newEntry);
+            this.emit(FileRegistry.EVENT_NAME, FileConfigurations.FABRIC_GATEWAYS);
+        } else {
+            await super.update(newEntry);
         }
-        await super.update(newEntry);
+    }
+
+    public newMicrofabEnvironment(name: string, directory: string, url: string): MicrofabEnvironment {
+        return new MicrofabEnvironment(name, directory, url);
     }
 
 }

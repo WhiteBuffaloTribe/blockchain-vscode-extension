@@ -36,6 +36,7 @@ import { FabricEnvironmentManager, ConnectedState } from '../../extension/fabric
 import { FabricEnvironmentRegistryEntry, FabricRuntimeUtil, LogType, EnvironmentType } from 'ibm-blockchain-platform-common';
 import { PackageRegistry } from '../../extension/registries/PackageRegistry';
 import { ExtensionUtil } from '../../extension/util/ExtensionUtil';
+import { FabricDebugConfigurationProvider } from '../../extension/debug/FabricDebugConfigurationProvider';
 
 chai.use(sinonChai);
 
@@ -127,7 +128,7 @@ describe('InstantiateCommand', () => {
             fabricRuntimeMock.getInstantiatedChaincode.resolves([]);
             const map: Map<string, Array<string>> = new Map<string, Array<string>>();
             map.set('myChannel', ['peerOne']);
-            fabricRuntimeMock.createChannelMap.resolves(map);
+            fabricRuntimeMock.createChannelMap.resolves({channelMap: map, v2channels: []});
 
             blockchainRuntimeExplorerProvider = ExtensionUtil.getBlockchainEnvironmentExplorerProvider();
             allChildren = await blockchainRuntimeExplorerProvider.getChildren();
@@ -244,6 +245,7 @@ describe('InstantiateCommand', () => {
         });
 
         it('should stop if cancelled when asked what chaincode EP to use', async () => {
+            executeCommandStub.resetHistory();
             showYesNo.resolves(UserInputUtil.NO);
             showQuickPick.resolves(undefined);
 
@@ -276,6 +278,7 @@ describe('InstantiateCommand', () => {
         });
 
         it(`should stop if user cancelled passing custom JSON CC EP file`, async () => {
+            executeCommandStub.resetHistory();
             showYesNo.onFirstCall().resolves(UserInputUtil.NO);
             showQuickPick.resolves(UserInputUtil.CUSTOM);
 
@@ -649,7 +652,7 @@ describe('InstantiateCommand', () => {
                     env: {
                         CORE_CHAINCODE_ID_NAME: 'beer:vscode-debug-123456'
                     },
-                    debugEvent: 'contractDebugging'
+                    debugEvent: FabricDebugConfigurationProvider.debugEvent
                 }
             };
 
@@ -678,7 +681,7 @@ describe('InstantiateCommand', () => {
                     env: {
                         CORE_CHAINCODE_ID_NAME: 'beer:vscode-debug-123456'
                     },
-                    debugEvent: 'contractDebugging'
+                    debugEvent: FabricDebugConfigurationProvider.debugEvent
                 }
             };
 
@@ -720,7 +723,7 @@ describe('InstantiateCommand', () => {
                     env: {
                         CORE_CHAINCODE_ID_NAME: 'beer:vscode-debug-123456'
                     },
-                    debugEvent: 'contractDebugging'
+                    debugEvent: FabricDebugConfigurationProvider.debugEvent
                 }
             };
 
@@ -756,7 +759,7 @@ describe('InstantiateCommand', () => {
                     env: {
                         CORE_CHAINCODE_ID_NAME: 'beer:vscode-debug-123456'
                     },
-                    debugEvent: 'contractDebugging'
+                    debugEvent: FabricDebugConfigurationProvider.debugEvent
                 },
                 workspaceFolder: workspaceFolder
             };

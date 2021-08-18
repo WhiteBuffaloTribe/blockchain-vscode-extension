@@ -12,7 +12,7 @@
     ],
     "homepage": "https://www.ibm.com/blockchain",
     "license": "Apache-2.0",
-    "version": "1.0.21",
+    "version": "1.0.41",
     "publisher": "IBMBlockchain",
     "icon": "resources/blockchain_marketplace.png",
     "galleryBanner": {
@@ -34,7 +34,8 @@
         "compile": "rimraf build && npm run build",
         "watch": "rimraf build && tsc -watch -p ./tsconfig.json",
         "pretest": "npm run compile && npm run lint && npm run licchk",
-        "unit": "npm run pretest && ./node_modules/.bin/jest",
+        "unit": "npm run pretest && npm run jestTest",
+        "jestTest": "./node_modules/.bin/jest",
         "licchk": "license-check-and-add",
         "tslint": "tslint --project tsconfig.json",
         "lint": "npm run tslint 'src/**/*.ts' 'test/**/*.test.ts'",
@@ -51,6 +52,7 @@
         "@carbon/themes": "^10.7.0",
         "@carbon/type": "^10.6.0",
         "@types/carbon-components-react": "^7.6.2",
+        "@types/carbon__icons-react": "^10.9.0",
         "@types/chai": "4.1.4",
         "@types/chai-as-promised": "7.1.0",
         "@types/enzyme": "^3.10.3",
@@ -199,7 +201,7 @@
                 "branches": 100,
                 "functions": 100,
                 "lines": 100,
-                "statements": -1
+                "statements": 100
             }
         }
     }

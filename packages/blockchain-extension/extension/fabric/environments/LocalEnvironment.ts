@@ -59,7 +59,6 @@ export class LocalEnvironment extends ManagedAnsibleEnvironment {
         });
 
         await FabricEnvironmentRegistry.instance().add(registryEntry);
-
         const settings: any = await vscode.workspace.getConfiguration().get(SettingConfigurations.FABRIC_RUNTIME, vscode.ConfigurationTarget.Global);
         const portObject: any = settings[this.name];
 
@@ -128,7 +127,8 @@ export class LocalEnvironment extends ManagedAnsibleEnvironment {
     }
 
     public async updateUserSettings(name: string): Promise<void> {
-        const settings: any = await vscode.workspace.getConfiguration().get(SettingConfigurations.FABRIC_RUNTIME, vscode.ConfigurationTarget.Global);
+        const _settings: any = await vscode.workspace.getConfiguration().get(SettingConfigurations.FABRIC_RUNTIME, vscode.ConfigurationTarget.Global);
+        const settings: any = JSON.parse(JSON.stringify(_settings));
         if (settings.ports) {
             // Delete old ports - the object should now have names, which have their own port range.
             delete settings.ports;
@@ -154,13 +154,20 @@ export class LocalEnvironment extends ManagedAnsibleEnvironment {
     public startLogs(outputAdapter: OutputAdapter): void {
         const opts: any = {
             attachFilter: (_id: any, dockerInspectInfo: any): boolean => {
-                if (dockerInspectInfo.Name.startsWith('/fabricvscodelocalfabric')) {
+
+                const networks: object = dockerInspectInfo.NetworkSettings.Networks;
+
+                // Strip spaces
+                let formattedName: string = this.name.replace(/\s+/g, '');
+                // E.g 1OrgLocalFabric_network
+                formattedName += '_network';
+
+                if (networks[formattedName]) {
                     return true;
                 } else {
-                    const labels: object = dockerInspectInfo.Config.Labels;
-                    const environmentName: string = labels['fabric-environment-name'];
-                    return environmentName === this.name;
+                    return false;
                 }
+
             },
             newline: true
         };

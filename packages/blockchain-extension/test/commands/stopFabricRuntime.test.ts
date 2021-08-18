@@ -79,6 +79,12 @@ describe('stopFabricRuntime', () => {
         await connectionRegistry.clear();
     });
 
+    it('should do nothing and report a warning on Eclipse Che', async () => {
+        sandbox.stub(ExtensionUtil, 'isChe').returns(true);
+        await vscode.commands.executeCommand(ExtensionCommands.STOP_FABRIC_SHORT);
+        logSpy.should.have.been.calledWithExactly(LogType.ERROR, sinon.match(/not supported/));
+    });
+
     it('should stop a Fabric environment from the tree', async () => {
         const environment: LocalEnvironment = EnvironmentFactory.getEnvironment(localRegistryEntry) as LocalEnvironment;
         stopStub = sandbox.stub(environment, 'stop').resolves();
@@ -214,7 +220,7 @@ describe('stopFabricRuntime', () => {
 
         await vscode.commands.executeCommand(ExtensionCommands.STOP_FABRIC);
 
-        showFabricEnvironmentQuickPickBoxStub.should.have.been.calledOnceWithExactly('Select an environment to stop', false, true, true, IncludeEnvironmentOptions.ALLENV, true);
+        showFabricEnvironmentQuickPickBoxStub.should.have.been.calledOnceWithExactly('Select an environment to stop', false, true, true, IncludeEnvironmentOptions.ALLENV, true, undefined, true);
 
         stopStub.should.have.been.called.calledOnceWithExactly(VSCodeBlockchainOutputAdapter.instance());
 
@@ -255,7 +261,7 @@ describe('stopFabricRuntime', () => {
 
         await vscode.commands.executeCommand(ExtensionCommands.STOP_FABRIC);
 
-        showFabricEnvironmentQuickPickBoxStub.should.have.been.calledOnceWithExactly('Select an environment to stop', false, true, true, IncludeEnvironmentOptions.ALLENV, true);
+        showFabricEnvironmentQuickPickBoxStub.should.have.been.calledOnceWithExactly('Select an environment to stop', false, true, true, IncludeEnvironmentOptions.ALLENV, true, undefined, true);
         stopStub.should.have.been.called.calledOnceWithExactly(VSCodeBlockchainOutputAdapter.instance());
 
         executeCommandSpy.should.not.have.been.calledWith(ExtensionCommands.DISCONNECT_GATEWAY);
@@ -269,7 +275,7 @@ describe('stopFabricRuntime', () => {
 
         await vscode.commands.executeCommand(ExtensionCommands.STOP_FABRIC);
 
-        showFabricEnvironmentQuickPickBoxStub.should.have.been.calledOnceWithExactly('Select an environment to stop', false, true, true, IncludeEnvironmentOptions.ALLENV, true);
+        showFabricEnvironmentQuickPickBoxStub.should.have.been.calledOnceWithExactly('Select an environment to stop', false, true, true, IncludeEnvironmentOptions.ALLENV, true, undefined, true);
 
         executeCommandSpy.should.not.have.been.calledWith(ExtensionCommands.DISCONNECT_GATEWAY);
         executeCommandSpy.should.not.have.been.calledWith(ExtensionCommands.DISCONNECT_ENVIRONMENT);
@@ -299,7 +305,7 @@ describe('stopFabricRuntime', () => {
 
         await vscode.commands.executeCommand(ExtensionCommands.STOP_FABRIC);
 
-        showFabricEnvironmentQuickPickBoxStub.should.have.been.calledOnceWithExactly('Select an environment to stop', false, true, true, IncludeEnvironmentOptions.ALLENV, true);
+        showFabricEnvironmentQuickPickBoxStub.should.have.been.calledOnceWithExactly('Select an environment to stop', false, true, true, IncludeEnvironmentOptions.ALLENV, true, undefined, true);
 
         stopStub.should.have.been.called.calledOnceWithExactly(VSCodeBlockchainOutputAdapter.instance());
 

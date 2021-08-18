@@ -22,18 +22,45 @@ import { TestUtil } from '../TestUtil';
 import { VSCodeBlockchainOutputAdapter } from '../../extension/logging/VSCodeBlockchainOutputAdapter';
 import { ExtensionCommands } from '../../ExtensionCommands';
 import { Reporter } from '../../extension/util/Reporter';
-import { FabricEnvironmentRegistry, FabricEnvironmentRegistryEntry, LogType, EnvironmentType, FabricEnvironment, FabricRuntimeUtil } from 'ibm-blockchain-platform-common';
+import { FabricEnvironmentRegistry, FabricEnvironmentRegistryEntry, LogType, EnvironmentType, FabricEnvironment, FabricRuntimeUtil, FileSystemUtil, FileConfigurations } from 'ibm-blockchain-platform-common';
 import { LocalEnvironment } from '../../extension/fabric/environments/LocalEnvironment';
 import { LocalEnvironmentManager } from '../../extension/fabric/environments/LocalEnvironmentManager';
 import { UserInputUtil} from '../../extension/commands/UserInputUtil';
-import { ModuleUtil } from '../../extension/util/ModuleUtil';
 import { SettingConfigurations } from '../../configurations';
 import { ExtensionUtil } from '../../extension/util/ExtensionUtil';
 import { ExtensionData, GlobalState } from '../../extension/util/GlobalState';
+import { ExtensionsInteractionUtil } from '../../extension/util/ExtensionsInteractionUtil';
+import { FeatureFlagManager } from '../../extension/util/FeatureFlags';
+import { SecureStoreFactory } from '../../extension/util/SecureStoreFactory';
+import { SecureStore, SecureStoreCredentials } from '../../extension/util/SecureStore';
 
 // tslint:disable no-unused-expression
 chai.should();
 chai.use(sinonChai);
+
+class TestSecureStore implements SecureStore {
+
+    async getPassword(_service: string, _account: string): Promise<string | null> {
+        return null;
+    }
+
+    async setPassword(_service: string, _account: string, _password: string): Promise<void> {
+        return;
+    }
+
+    async deletePassword(_service: string, _account: string): Promise<boolean> {
+        return false;
+    }
+
+    async findCredentials(_service: string): Promise<SecureStoreCredentials> {
+        return [];
+    }
+
+    async findPassword(_service: string): Promise<string | null> {
+        return null;
+    }
+
+}
 
 describe('AddEnvironmentCommand', () => {
     let mySandBox: sinon.SinonSandbox;
@@ -49,15 +76,23 @@ describe('AddEnvironmentCommand', () => {
     let axiosGetStub: sinon.SinonStub;
     let chooseCertVerificationStub: sinon.SinonStub;
     let setPasswordStub: sinon.SinonStub;
-    let getCoreNodeModuleStub: sinon.SinonStub;
     let getNodesStub: sinon.SinonStub;
     let url: string;
-    let key: string;
-    let secret: string;
+    let userAuth1: string;
+    let userAuth2: string;
     let certVerificationError: any;
     let certVerificationError2: any;
     let chooseMethodStub: sinon.SinonStub;
     let getExtensionLocalFabricSettingStub: sinon.SinonStub;
+    let removeRuntimeSpy: sinon.SinonSpy;
+    let originalSaaSName: string;
+    let showQuickPickYesNoStub: sinon.SinonStub;
+    let cloudAccountGetAccessTokenStub: sinon.SinonStub;
+    let chooseBlockchainStub: sinon.SinonStub;
+    let resourcesResponseMock: any;
+    let consoleStatusMock: any;
+    let urlSaaS: string;
+    let accessToken: string;
 
     before(async () => {
         mySandBox = sinon.createSandbox();
@@ -85,7 +120,7 @@ describe('AddEnvironmentCommand', () => {
             const uri: vscode.Uri = vscode.Uri.file(environmentDirectoryPath);
             openFileBrowserStub = mySandBox.stub(UserInputUtil, 'openFileBrowser').resolves(uri);
             showInputBoxStub = mySandBox.stub(UserInputUtil, 'showInputBox');
-            chooseNameStub = showInputBoxStub.withArgs('Enter a name for the environment');
+            chooseNameStub = showInputBoxStub.withArgs('Enter a name for the environment', sinon.match.any);
             chooseNameStub.resolves('myEnvironment');
             executeCommandStub = mySandBox.stub(vscode.commands, 'executeCommand').callThrough();
             executeCommandStub.withArgs(ExtensionCommands.IMPORT_NODES_TO_ENVIRONMENT).resolves(true);
@@ -93,18 +128,22 @@ describe('AddEnvironmentCommand', () => {
             executeCommandStub.withArgs(ExtensionCommands.REFRESH_ENVIRONMENTS).resolves();
             executeCommandStub.withArgs(ExtensionCommands.REFRESH_GATEWAYS).resolves();
             executeCommandStub.withArgs(ExtensionCommands.REFRESH_WALLETS).resolves();
+            executeCommandStub.withArgs(ExtensionCommands.START_FABRIC).resolves();
+            executeCommandStub.withArgs('markdown.showPreview').resolves();
             sendTelemetryEventStub = mySandBox.stub(Reporter.instance(), 'sendTelemetryEvent');
             deleteEnvironmentSpy = mySandBox.spy(FabricEnvironmentRegistry.instance(), 'delete');
 
             // Ops tools requirements
             axiosGetStub = mySandBox.stub(Axios, 'get');
+            showQuickPickYesNoStub = mySandBox.stub(UserInputUtil, 'showQuickPickYesNo').callThrough();
+            showQuickPickYesNoStub.withArgs('Are you connecting to an IBM Blockchain Platform service instance on IBM Cloud?').resolves(UserInputUtil.NO);
 
-            url = 'my/OpsTool/url';
-            key = 'myOpsToolKey';
-            secret = 'myOpsToolSecret';
+            url = 'https://my.OpsTool.url';
+            userAuth1 = 'myOpsToolKey';
+            userAuth2 = 'myOpsToolSecret';
             showInputBoxStub.withArgs('Enter the URL of the IBM Blockchain Platform Console you want to connect to').resolves(url);
-            showInputBoxStub.withArgs('Enter the API key of the IBM Blockchain Platform Console you want to connect to').resolves(key);
-            showInputBoxStub.withArgs('Enter the API secret of the IBM Blockchain Platform Console you want to connect to').resolves(secret);
+            showInputBoxStub.withArgs('Enter the API key or the User ID of the IBM Blockchain Platform Console you want to connect to').resolves(userAuth1);
+            showInputBoxStub.withArgs('Enter the API secret or the password of the IBM Blockchain Platform Console you want to connect to').resolves(userAuth2);
             chooseCertVerificationStub = showQuickPickItemStub.withArgs('Unable to perform certificate verification. Please choose how to proceed', [{ label: UserInputUtil.CONNECT_NO_CA_CERT_CHAIN, data: UserInputUtil.CONNECT_NO_CA_CERT_CHAIN }, { label: UserInputUtil.CANCEL_NO_CERT_CHAIN, data: UserInputUtil.CANCEL_NO_CERT_CHAIN, description: UserInputUtil.CANCEL_NO_CERT_CHAIN_DESCRIPTION }]);
             chooseCertVerificationStub.resolves({ label: UserInputUtil.CONNECT_NO_CA_CERT_CHAIN, data: UserInputUtil.CONNECT_NO_CA_CERT_CHAIN });
             certVerificationError = new Error('Certificate Verification Error');
@@ -114,12 +153,47 @@ describe('AddEnvironmentCommand', () => {
             axiosGetStub.onFirstCall().rejects(certVerificationError);
             axiosGetStub.onSecondCall().rejects(certVerificationError2);
             axiosGetStub.onThirdCall().resolves();
-            setPasswordStub = mySandBox.stub().resolves();
-            getCoreNodeModuleStub = mySandBox.stub(ModuleUtil, 'getCoreNodeModule').returns({setPassword: setPasswordStub});
+            const mockSecureStore: sinon.SinonStubbedInstance<TestSecureStore> = sinon.createStubInstance(TestSecureStore);
+            setPasswordStub = mockSecureStore.setPassword;
+            setPasswordStub.resolves();
+            mySandBox.stub(SecureStoreFactory, 'getSecureStore').resolves(mockSecureStore);
             getNodesStub = mySandBox.stub(FabricEnvironment.prototype, 'getNodes');
             getNodesStub.resolves([{nodeOneData: {}}, {nodeTwoData: {}}]);
             getExtensionLocalFabricSettingStub = mySandBox.stub(ExtensionUtil, 'getExtensionLocalFabricSetting');
             getExtensionLocalFabricSettingStub.returns(true);
+
+            // SaaS Ops tools requirements
+            urlSaaS = 'https://my.SaaS.OpsTool.url';
+            originalSaaSName = 'myBlockchainPlatform';
+            accessToken = 'some token';
+            cloudAccountGetAccessTokenStub = mySandBox.stub(ExtensionsInteractionUtil, 'cloudAccountGetAccessToken').resolves(accessToken);
+            chooseBlockchainStub = showQuickPickItemStub.withArgs('Select an IBM Blockchain Platform service instance', sinon.match.any).callThrough();
+
+            resourcesResponseMock = {
+                data: {
+                        next_url: null,
+                        resources: [{
+                                        resource_plan_id: 'blockchain-standard',
+                                        name: originalSaaSName,
+                                        guid: 'someGUID1',
+                                        dashboard_url: 'https://some.dashboard.url1/some/path'
+                                    }, {
+                                        resource_plan_id: 'otherService-standard',
+                                        name: 'myOtherService',
+                                        guid: 'someGUID2',
+                                        dashboard_url: 'https://some.dashboard.url2/some/path'
+                                    }]
+                }
+            };
+
+            consoleStatusMock = {
+                status: 200,
+                data: {
+                    endpoint: urlSaaS
+                }
+            };
+
+            removeRuntimeSpy = mySandBox.spy(LocalEnvironmentManager.instance(), 'removeRuntime');
         });
 
         afterEach(async () => {
@@ -143,6 +217,8 @@ describe('AddEnvironmentCommand', () => {
             });
 
             deleteEnvironmentSpy.should.have.not.been.called;
+            removeRuntimeSpy.should.not.have.been.called;
+
             executeCommandStub.should.have.been.calledWith(ExtensionCommands.EDIT_NODE_FILTERS, sinon.match.instanceOf(FabricEnvironmentRegistryEntry), true, UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS);
             executeCommandStub.should.have.been.calledWith(ExtensionCommands.REFRESH_ENVIRONMENTS);
 
@@ -160,6 +236,8 @@ describe('AddEnvironmentCommand', () => {
             environments.length.should.equal(0);
             showInputBoxStub.should.not.have.been.called;
             deleteEnvironmentSpy.should.have.not.been.called;
+            removeRuntimeSpy.should.not.have.been.called;
+
             logSpy.should.have.been.calledOnceWithExactly(LogType.INFO, undefined, 'Add environment');
             sendTelemetryEventStub.should.not.have.been.called;
         });
@@ -178,6 +256,8 @@ describe('AddEnvironmentCommand', () => {
             executeCommandStub.should.have.been.calledWith(ExtensionCommands.REFRESH_ENVIRONMENTS);
 
             deleteEnvironmentSpy.should.have.not.been.called;
+            removeRuntimeSpy.should.not.have.been.called;
+
             logSpy.getCall(0).should.have.been.calledWith(LogType.INFO, undefined, 'Add environment');
             logSpy.getCall(1).should.have.been.calledWith(LogType.SUCCESS, 'Successfully added a new environment');
             sendTelemetryEventStub.should.have.been.calledOnceWithExactly('addEnvironmentCommand');
@@ -207,6 +287,8 @@ describe('AddEnvironmentCommand', () => {
             executeCommandStub.should.have.been.calledWith(ExtensionCommands.IMPORT_NODES_TO_ENVIRONMENT, sinon.match.instanceOf(FabricEnvironmentRegistryEntry), true, UserInputUtil.ADD_ENVIRONMENT_FROM_NODES);
             executeCommandStub.should.have.been.calledWith(ExtensionCommands.REFRESH_ENVIRONMENTS);
             deleteEnvironmentSpy.should.have.not.been.called;
+            removeRuntimeSpy.should.not.have.been.called;
+
             logSpy.getCall(0).should.have.been.calledWith(LogType.INFO, undefined, 'Add environment');
             logSpy.getCall(1).should.have.been.calledWith(LogType.SUCCESS, 'Successfully added a new environment');
             logSpy.getCall(2).should.have.been.calledWith(LogType.INFO, undefined, 'Add environment');
@@ -235,6 +317,8 @@ describe('AddEnvironmentCommand', () => {
             const environments: Array<FabricEnvironmentRegistryEntry> = await FabricEnvironmentRegistry.instance().getAll();
             environments.length.should.equal(0);
             deleteEnvironmentSpy.should.have.not.been.called;
+            removeRuntimeSpy.should.not.have.been.called;
+
             logSpy.should.have.been.calledOnceWithExactly(LogType.INFO, undefined, 'Add environment');
             sendTelemetryEventStub.should.not.have.been.called;
         });
@@ -249,6 +333,8 @@ describe('AddEnvironmentCommand', () => {
             environments.length.should.equal(0);
             logSpy.should.have.been.calledTwice;
             deleteEnvironmentSpy.should.have.been.called;
+            removeRuntimeSpy.should.not.have.been.called;
+
             logSpy.getCall(0).should.have.been.calledWith(LogType.INFO, undefined, 'Add environment');
             logSpy.getCall(1).should.have.been.calledWith(LogType.ERROR, `Failed to add a new environment: ${error.message}`, `Failed to add a new environment: ${error.toString()}`);
             sendTelemetryEventStub.should.not.have.been.called;
@@ -266,6 +352,8 @@ describe('AddEnvironmentCommand', () => {
             environments.length.should.equal(0);
             logSpy.should.have.been.calledTwice;
             deleteEnvironmentSpy.should.have.been.called;
+            removeRuntimeSpy.should.not.have.been.called;
+
             logSpy.getCall(0).should.have.been.calledWith(LogType.INFO, undefined, 'Add environment');
             logSpy.getCall(1).should.have.been.calledWith(LogType.ERROR, `Failed to add a new environment: ${error.message}`, `Failed to add a new environment: ${error.toString()}`);
             sendTelemetryEventStub.should.not.have.been.called;
@@ -289,6 +377,8 @@ describe('AddEnvironmentCommand', () => {
             executeCommandStub.should.have.been.calledWith(ExtensionCommands.REFRESH_ENVIRONMENTS);
 
             deleteEnvironmentSpy.should.not.have.been.called;
+            removeRuntimeSpy.should.not.have.been.called;
+
             logSpy.getCall(0).should.have.been.calledWith(LogType.INFO, undefined, 'Add environment');
             logSpy.getCall(1).should.have.been.calledWith(LogType.SUCCESS, 'Successfully added a new environment');
             logSpy.getCall(2).should.have.been.calledWith(LogType.INFO, undefined, 'Add environment');
@@ -314,6 +404,8 @@ describe('AddEnvironmentCommand', () => {
             executeCommandStub.should.have.been.calledWith(ExtensionCommands.REFRESH_ENVIRONMENTS);
 
             deleteEnvironmentSpy.should.not.have.been.called;
+            removeRuntimeSpy.should.not.have.been.called;
+
             logSpy.getCall(0).should.have.been.calledWith(LogType.INFO, undefined, 'Add environment');
             logSpy.getCall(1).should.have.been.calledWith(LogType.SUCCESS, 'Successfully added a new environment');
             logSpy.getCall(2).should.have.been.calledWith(LogType.INFO, undefined, 'Add environment');
@@ -336,6 +428,8 @@ describe('AddEnvironmentCommand', () => {
             executeCommandStub.should.have.been.calledWith(ExtensionCommands.REFRESH_ENVIRONMENTS);
 
             deleteEnvironmentSpy.should.have.not.been.called;
+            removeRuntimeSpy.should.not.have.been.called;
+
             logSpy.getCall(0).should.have.been.calledWith(LogType.INFO, undefined, 'Add environment');
             logSpy.should.have.been.calledWith(LogType.WARNING, 'Added a new environment, but some nodes could not be added');
             sendTelemetryEventStub.should.have.been.calledOnceWithExactly('addEnvironmentCommand');
@@ -349,6 +443,8 @@ describe('AddEnvironmentCommand', () => {
             const environments: Array<FabricEnvironmentRegistryEntry> = await FabricEnvironmentRegistry.instance().getAll();
             environments.length.should.equal(0);
             deleteEnvironmentSpy.should.have.been.called;
+            removeRuntimeSpy.should.not.have.been.called;
+
             logSpy.should.have.been.calledOnceWithExactly(LogType.INFO, undefined, 'Add environment');
             sendTelemetryEventStub.should.not.have.been.called;
         });
@@ -374,6 +470,8 @@ describe('AddEnvironmentCommand', () => {
             executeCommandStub.should.have.been.calledWith(ExtensionCommands.REFRESH_WALLETS);
 
             deleteEnvironmentSpy.should.have.not.been.called;
+            removeRuntimeSpy.should.not.have.been.called;
+
             logSpy.getCall(0).should.have.been.calledWith(LogType.INFO, undefined, 'Add environment');
             logSpy.getCall(1).should.have.been.calledWith(LogType.SUCCESS, 'Successfully added a new environment');
             sendTelemetryEventStub.should.have.been.calledOnceWithExactly('addEnvironmentCommand');
@@ -404,6 +502,8 @@ describe('AddEnvironmentCommand', () => {
             executeCommandStub.should.have.been.calledWith(ExtensionCommands.REFRESH_WALLETS);
 
             deleteEnvironmentSpy.should.have.not.been.called;
+            removeRuntimeSpy.should.not.have.been.called;
+
             logSpy.getCall(0).should.have.been.calledWith(LogType.INFO, undefined, 'Add environment');
             logSpy.getCall(1).should.have.been.calledWith(LogType.SUCCESS, 'Successfully added a new environment');
             sendTelemetryEventStub.should.have.been.calledOnceWithExactly('addEnvironmentCommand');
@@ -423,7 +523,7 @@ describe('AddEnvironmentCommand', () => {
             sendTelemetryEventStub.should.not.have.been.calledOnceWithExactly('addEnvironmentCommand');
         });
 
-        it('should handle user cancelling when asked for url when creating an OpsTool instance', async () => {
+        it('should handle user cancelling when asked for url when creating an OpsTool instance (Software support)', async () => {
             chooseMethodStub.resolves({data: UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS});
             chooseNameStub.onFirstCall().resolves('myOpsToolsEnvironment');
             showInputBoxStub.withArgs('Enter the URL of the IBM Blockchain Platform Console you want to connect to').resolves(undefined);
@@ -432,59 +532,73 @@ describe('AddEnvironmentCommand', () => {
 
             const environments: Array<FabricEnvironmentRegistryEntry> = await FabricEnvironmentRegistry.instance().getAll();
             environments.length.should.equal(0);
-            showInputBoxStub.withArgs('Enter the API key of the IBM Blockchain Platform Console you want to connect to').should.not.have.been.called;
-            showInputBoxStub.withArgs('Enter the API secret of the IBM Blockchain Platform Console you want to connect to').should.not.have.been.called;
+            showInputBoxStub.withArgs('Enter the API key or the User ID of the IBM Blockchain Platform Console you want to connect to').should.not.have.been.called;
+            showInputBoxStub.withArgs('Enter the API secret or the password of the IBM Blockchain Platform Console you want to connect to').should.not.have.been.called;
             axiosGetStub.should.not.have.been.called;
             deleteEnvironmentSpy.should.have.not.been.called;
+            removeRuntimeSpy.should.not.have.been.called;
+
             logSpy.should.have.been.calledOnceWithExactly(LogType.INFO, undefined, 'Add environment');
         });
 
-        it('should handle user cancelling when asked for api key when creating an OpsTool instance', async () => {
+        it('should handle url with trailing path after "/" when creating an OpsTool instance (Software support)', async () => {
             chooseMethodStub.resolves({data: UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS});
             chooseNameStub.onFirstCall().resolves('myOpsToolsEnvironment');
-            showInputBoxStub.withArgs('Enter the API key of the IBM Blockchain Platform Console you want to connect to').resolves(undefined);
+            showInputBoxStub.withArgs('Enter the URL of the IBM Blockchain Platform Console you want to connect to').resolves(`${url}/and/some/more/path`);
 
             await vscode.commands.executeCommand(ExtensionCommands.ADD_ENVIRONMENT);
 
             const environments: Array<FabricEnvironmentRegistryEntry> = await FabricEnvironmentRegistry.instance().getAll();
-            environments.length.should.equal(0);
-            showInputBoxStub.withArgs('Enter the API secret of the IBM Blockchain Platform Console you want to connect to').should.not.have.been.called;
-            axiosGetStub.should.not.have.been.called;
+            environments.length.should.equal(1);
+            environments[0].should.deep.equal({
+                name: 'myOpsToolsEnvironment',
+                url: url,
+                environmentType: EnvironmentType.OPS_TOOLS_ENVIRONMENT
+            });
+
             deleteEnvironmentSpy.should.have.not.been.called;
-            logSpy.should.have.been.calledOnceWithExactly(LogType.INFO, undefined, 'Add environment');
-        });
-
-        it('should handle when user cancels when asked for api secret when creating an OpsTool instance', async () => {
-            chooseMethodStub.resolves({data: UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS});
-            chooseNameStub.onFirstCall().resolves('myOpsToolsEnvironment');
-            showInputBoxStub.withArgs('Enter the API secret of the IBM Blockchain Platform Console you want to connect to').resolves(undefined);
-
-            await vscode.commands.executeCommand(ExtensionCommands.ADD_ENVIRONMENT);
-
-            const environments: Array<FabricEnvironmentRegistryEntry> = await FabricEnvironmentRegistry.instance().getAll();
-            environments.length.should.equal(0);
-            axiosGetStub.should.not.have.been.called;
-            deleteEnvironmentSpy.should.have.not.been.called;
-            logSpy.should.have.been.calledOnceWithExactly(LogType.INFO, undefined, 'Add environment');
-        });
-
-        it('should handle when the keytar module cannot be imported at all when creating a new OpsTool instance', async () => {
-            chooseMethodStub.resolves({data: UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS});
-            chooseNameStub.onFirstCall().resolves('myOpsToolsEnvironment');
-            getCoreNodeModuleStub.withArgs('keytar').returns(undefined);
-
-            await vscode.commands.executeCommand(ExtensionCommands.ADD_ENVIRONMENT);
-
-            const environments: Array<FabricEnvironmentRegistryEntry> = await FabricEnvironmentRegistry.instance().getAll();
-            environments.length.should.equal(0);
-
-            getCoreNodeModuleStub.should.have.been.calledOnce;
-            deleteEnvironmentSpy.should.not.have.been.called;
+            removeRuntimeSpy.should.not.have.been.called;
+            executeCommandStub.should.have.been.calledWith(ExtensionCommands.EDIT_NODE_FILTERS, sinon.match.instanceOf(FabricEnvironmentRegistryEntry), true, UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS);
+            executeCommandStub.should.have.been.calledWith(ExtensionCommands.REFRESH_ENVIRONMENTS);
             logSpy.getCall(0).should.have.been.calledWith(LogType.INFO, undefined, 'Add environment');
-            logSpy.getCall(1).should.have.been.calledWith(LogType.ERROR, `Failed to add a new environment: Error importing the keytar module`, `Failed to add a new environment: Error: Error importing the keytar module`);
+            logSpy.getCall(1).should.have.been.calledWith(LogType.SUCCESS, 'Successfully added a new environment');
+            sendTelemetryEventStub.should.have.been.calledOnceWithExactly('addEnvironmentCommand');
         });
 
-        it('should handle when certificate is present in OS trust store when creating new OpsTool instance', async () => {
+        it('should handle user cancelling when asked for api key/user id when creating an OpsTool instance (Software support)', async () => {
+            chooseMethodStub.resolves({data: UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS});
+            chooseNameStub.onFirstCall().resolves('myOpsToolsEnvironment');
+            showInputBoxStub.withArgs('Enter the API key or the User ID of the IBM Blockchain Platform Console you want to connect to').resolves(undefined);
+
+            await vscode.commands.executeCommand(ExtensionCommands.ADD_ENVIRONMENT);
+
+            const environments: Array<FabricEnvironmentRegistryEntry> = await FabricEnvironmentRegistry.instance().getAll();
+            environments.length.should.equal(0);
+            showInputBoxStub.withArgs('Enter the API secret or the password of the IBM Blockchain Platform Console you want to connect to').should.not.have.been.called;
+            axiosGetStub.should.not.have.been.called;
+            deleteEnvironmentSpy.should.have.not.been.called;
+            removeRuntimeSpy.should.not.have.been.called;
+
+            logSpy.should.have.been.calledOnceWithExactly(LogType.INFO, undefined, 'Add environment');
+        });
+
+        it('should handle when user cancels when asked for api secret/password when creating an OpsTool instance (Software support)', async () => {
+            chooseMethodStub.resolves({data: UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS});
+            chooseNameStub.onFirstCall().resolves('myOpsToolsEnvironment');
+            showInputBoxStub.withArgs('Enter the API secret or the password of the IBM Blockchain Platform Console you want to connect to').resolves(undefined);
+
+            await vscode.commands.executeCommand(ExtensionCommands.ADD_ENVIRONMENT);
+
+            const environments: Array<FabricEnvironmentRegistryEntry> = await FabricEnvironmentRegistry.instance().getAll();
+            environments.length.should.equal(0);
+            axiosGetStub.should.not.have.been.called;
+            deleteEnvironmentSpy.should.have.not.been.called;
+            removeRuntimeSpy.should.not.have.been.called;
+
+            logSpy.should.have.been.calledOnceWithExactly(LogType.INFO, undefined, 'Add environment');
+        });
+
+        it('should handle when certificate is present in OS trust store when creating new OpsTool instance (Software support)', async () => {
             chooseMethodStub.resolves({data: UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS});
             chooseNameStub.onFirstCall().resolves('myOpsToolsEnvironment');
             axiosGetStub.onFirstCall().rejects(certVerificationError2);
@@ -492,28 +606,30 @@ describe('AddEnvironmentCommand', () => {
 
             await vscode.commands.executeCommand(ExtensionCommands.ADD_ENVIRONMENT);
 
-            getCoreNodeModuleStub.should.have.been.calledOnce;
             deleteEnvironmentSpy.should.have.not.been.called;
+            removeRuntimeSpy.should.not.have.been.called;
+
             logSpy.getCall(0).should.have.been.calledWith(LogType.INFO, undefined, 'Add environment');
             logSpy.getCall(1).should.have.been.calledWith(LogType.SUCCESS, 'Successfully added a new environment');
         });
 
-        it('should handle when the api key or secret are incorrect when creating new OpsTool instance', async () => {
+        it('should handle when the api key + secret/user id + password are incorrect when creating new OpsTool instance (Software support)', async () => {
             chooseMethodStub.resolves({data: UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS});
             chooseNameStub.onFirstCall().resolves('myOpsToolsEnvironment');
             const error: Error = new Error('invalid credentials error');
             axiosGetStub.onThirdCall().rejects(error);
-            const thrownError: Error = new Error(`Problem detected with API key and/or secret: ${error.message}`);
+            const thrownError: Error = new Error(`Problem detected with the authentication information provided: ${error.message}`);
 
             await vscode.commands.executeCommand(ExtensionCommands.ADD_ENVIRONMENT);
 
-            getCoreNodeModuleStub.should.have.been.calledOnce;
             deleteEnvironmentSpy.should.not.have.been.called;
+            removeRuntimeSpy.should.not.have.been.called;
+
             logSpy.getCall(0).should.have.been.calledWith(LogType.INFO, undefined, 'Add environment');
             logSpy.getCall(1).should.have.been.calledWith(LogType.ERROR, `Failed to add a new environment: ${thrownError.message}`, `Failed to add a new environment: ${thrownError.toString()}`);
         });
 
-        it('should handle when the api key, api secret and rejectUnauthorized cannot be stored saved securely onto the keychain using the setPassword function when creating new OpsTool instance', async () => {
+        it('should handle when the api key/user id, api secret/password and rejectUnauthorized cannot be stored saved securely onto the keychain using the setPassword function when creating new OpsTool instance (Software support)', async () => {
             chooseMethodStub.resolves({data: UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS});
             chooseNameStub.onFirstCall().resolves('myOpsToolsEnvironment');
             const error: Error = new Error('newError');
@@ -522,13 +638,14 @@ describe('AddEnvironmentCommand', () => {
 
             await vscode.commands.executeCommand(ExtensionCommands.ADD_ENVIRONMENT);
 
-            getCoreNodeModuleStub.should.have.been.calledOnce;
             deleteEnvironmentSpy.should.not.have.been.called;
+            removeRuntimeSpy.should.not.have.been.called;
+
             logSpy.getCall(0).should.have.been.calledWith(LogType.INFO, undefined, 'Add environment');
             logSpy.getCall(1).should.have.been.calledWith(LogType.ERROR, `Failed to add a new environment: ${caughtError.message}`, `Failed to add a new environment: ${caughtError.toString()}`);
         });
 
-        it('should handle user choosing not to perform certificate verification on a new Ops Tool instance', async () => {
+        it('should handle user choosing not to perform certificate verification on a new Ops Tool instance (Software support)', async () => {
             chooseMethodStub.resolves({data: UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS});
             chooseNameStub.onFirstCall().resolves('myOpsToolsEnvironment');
             chooseCertVerificationStub.onFirstCall().resolves(UserInputUtil.CONNECT_NO_CA_CERT_CHAIN);
@@ -539,7 +656,7 @@ describe('AddEnvironmentCommand', () => {
             logSpy.getCall(1).should.have.been.calledWith(LogType.SUCCESS, 'Successfully added a new environment');
         });
 
-        it('should handle when user cancels when asked to choose certificate verification methtod when creating an OpsTool instance', async () => {
+        it('should handle when user cancels when asked to choose certificate verification methtod when creating an OpsTool instance (Software support)', async () => {
             chooseMethodStub.resolves({data: UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS});
             chooseNameStub.onFirstCall().resolves('myOpsToolsEnvironment');
             chooseCertVerificationStub.resolves();
@@ -550,7 +667,7 @@ describe('AddEnvironmentCommand', () => {
             logSpy.getCall(0).should.have.been.calledWith(LogType.INFO, undefined, 'Add environment');
         });
 
-        it('should handle error connecting to Ops Tool health end point URL when adding environment', async () => {
+        it('should handle error connecting to Ops Tool health end point URL when adding environment (Software support)', async () => {
             chooseMethodStub.resolves({data: UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS});
             chooseNameStub.onFirstCall().resolves('myOpsToolsEnvironment');
             const error: Error = new Error('some error');
@@ -561,8 +678,9 @@ describe('AddEnvironmentCommand', () => {
 
             await vscode.commands.executeCommand(ExtensionCommands.ADD_ENVIRONMENT);
 
-            getCoreNodeModuleStub.should.have.been.calledOnce;
             deleteEnvironmentSpy.should.not.have.been.called;
+            removeRuntimeSpy.should.not.have.been.called;
+
             axiosGetStub.should.have.have.been.calledTwice;
             logSpy.getCall(0).should.have.been.calledWith(LogType.INFO, undefined, 'Add environment');
             logSpy.getCall(1).should.have.been.calledWith(LogType.ERROR, `Failed to add a new environment: ${thrownError.message}`, `Failed to add a new environment: ${thrownError.toString()}`);
@@ -578,6 +696,8 @@ describe('AddEnvironmentCommand', () => {
             await vscode.commands.executeCommand(ExtensionCommands.ADD_ENVIRONMENT);
 
             deleteEnvironmentSpy.should.have.not.been.called;
+            removeRuntimeSpy.should.not.have.been.called;
+
             logSpy.getCall(0).should.have.been.calledWith(LogType.INFO, undefined, 'Add environment');
             logSpy.should.have.been.calledWith(LogType.SUCCESS, 'Successfully added a new environment. No nodes included in current filters, click myOpsToolsEnvironment to edit filters');
         });
@@ -598,6 +718,8 @@ describe('AddEnvironmentCommand', () => {
             executeCommandStub.should.have.been.calledWith(ExtensionCommands.REFRESH_ENVIRONMENTS);
 
             deleteEnvironmentSpy.should.have.not.been.called;
+            removeRuntimeSpy.should.not.have.been.called;
+
             showQuickPickItemStub.should.have.been.calledWith('Select a method to add an environment', [{ label: UserInputUtil.ADD_ENVIRONMENT_FROM_DIR, data: UserInputUtil.ADD_ENVIRONMENT_FROM_DIR, description: UserInputUtil.ADD_ENVIRONMENT_FROM_DIR_DESCRIPTION }, { label: UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS, data: UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS, description: UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS_DESCRIPTION }, { label: UserInputUtil.ADD_ENVIRONMENT_FROM_NODES, data: UserInputUtil.ADD_ENVIRONMENT_FROM_NODES, description: UserInputUtil.ADD_ENVIRONMENT_FROM_NODES_DESCRIPTION }]);
             logSpy.getCall(0).should.have.been.calledWith(LogType.INFO, undefined, 'Add environment');
             logSpy.getCall(1).should.have.been.calledWith(LogType.SUCCESS, 'Successfully added a new environment');
@@ -608,31 +730,36 @@ describe('AddEnvironmentCommand', () => {
             getNodesStub.restore();
 
             const envName: string = 'New 1 Org Network';
+
             chooseMethodStub.onCall(0).resolves({data: UserInputUtil.ADD_ENVIRONMENT_FROM_TEMPLATE});
             showQuickPickItemStub.onCall(1).resolves({data: 1});
 
             chooseNameStub.resolves(envName);
-            const initializeStub: sinon.SinonStub = mySandBox.stub(LocalEnvironmentManager.instance(), 'initialize').resolves();
+
+            const envEntry: FabricEnvironmentRegistryEntry = {name: envName, numberOfOrgs: 1, managedRuntime: true, environmentType: EnvironmentType.LOCAL_ENVIRONMENT};
+
+            const initializeStub: sinon.SinonStub = mySandBox.stub(LocalEnvironmentManager.instance(), 'initialize').callsFake(async () => {
+                await FabricEnvironmentRegistry.instance().add(envEntry);
+            });
 
             const mockRuntime: sinon.SinonStubbedInstance<LocalEnvironment> = mySandBox.createStubInstance(LocalEnvironment);
             mockRuntime.getName.returns(envName);
-            mockRuntime.generate.resolves();
 
-            const getRuntimeStub: sinon.SinonStub = mySandBox.stub(LocalEnvironmentManager.instance(), 'getRuntime').returns(mockRuntime);
+            executeCommandStub.withArgs(ExtensionCommands.START_FABRIC, envEntry).resolves();
 
             await vscode.commands.executeCommand(ExtensionCommands.ADD_ENVIRONMENT);
 
             showQuickPickItemStub.should.have.been.calledTwice;
             chooseMethodStub.should.have.been.calledOnceWithExactly('Select a method to add an environment', [{label: UserInputUtil.ADD_ENVIRONMENT_FROM_TEMPLATE, data: UserInputUtil.ADD_ENVIRONMENT_FROM_TEMPLATE, description: UserInputUtil.ADD_ENVIRONMENT_FROM_TEMPLATE_DESCRIPTION}, { label: UserInputUtil.ADD_ENVIRONMENT_FROM_DIR, data: UserInputUtil.ADD_ENVIRONMENT_FROM_DIR, description: UserInputUtil.ADD_ENVIRONMENT_FROM_DIR_DESCRIPTION }, { label: UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS, data: UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS, description: UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS_DESCRIPTION }, { label: UserInputUtil.ADD_ENVIRONMENT_FROM_NODES, data: UserInputUtil.ADD_ENVIRONMENT_FROM_NODES, description: UserInputUtil.ADD_ENVIRONMENT_FROM_NODES_DESCRIPTION }]);
-            showQuickPickItemStub.should.have.been.calledWith('Choose a configuration for a new local network', [{label: UserInputUtil.ONE_ORG_TEMPLATE, data: 1}, {label: UserInputUtil.TWO_ORG_TEMPLATE, data: 2}]);
-            chooseNameStub.should.have.been.calledOnceWithExactly(`Enter a name for the environment`);
+            showQuickPickItemStub.should.have.been.calledWith('Choose a configuration for a new local network', [{label: UserInputUtil.ONE_ORG_TEMPLATE, data: 1}, {label: UserInputUtil.TWO_ORG_TEMPLATE, data: 2}, {label: UserInputUtil.CREATE_ADDITIONAL_LOCAL_NETWORKS, data: UserInputUtil.CREATE_ADDITIONAL_LOCAL_NETWORKS_DATA}]);
+            chooseNameStub.should.have.been.calledOnceWithExactly('Enter a name for the environment', '');
             initializeStub.should.have.been.calledWith(envName, 1);
-            getRuntimeStub.should.have.been.calledOnceWith(envName);
-            mockRuntime.generate.should.have.been.calledOnce;
 
             executeCommandStub.should.not.have.been.calledWith(ExtensionCommands.IMPORT_NODES_TO_ENVIRONMENT, sinon.match.instanceOf(FabricEnvironmentRegistryEntry));
-
+            executeCommandStub.should.have.been.calledWith(ExtensionCommands.START_FABRIC, envEntry);
             deleteEnvironmentSpy.should.have.not.been.called;
+            removeRuntimeSpy.should.not.have.been.called;
+
             logSpy.getCall(0).should.have.been.calledWith(LogType.INFO, undefined, 'Add environment');
             logSpy.getCall(1).should.have.been.calledWith(LogType.SUCCESS, 'Successfully added a new environment');
             sendTelemetryEventStub.should.have.been.calledOnceWithExactly('addEnvironmentCommand');
@@ -646,19 +773,22 @@ describe('AddEnvironmentCommand', () => {
             showQuickPickItemStub.onCall(1).resolves({data: 1});
 
             chooseNameStub.resolves(envName);
-            const initializeStub: sinon.SinonStub = mySandBox.stub(LocalEnvironmentManager.instance(), 'initialize').resolves();
+            const envEntry: FabricEnvironmentRegistryEntry = {name: envName, numberOfOrgs: 1, managedRuntime: true, environmentType: EnvironmentType.LOCAL_ENVIRONMENT};
+
+            const initializeStub: sinon.SinonStub = mySandBox.stub(LocalEnvironmentManager.instance(), 'initialize').callsFake(async () => {
+                await FabricEnvironmentRegistry.instance().add(envEntry);
+            });
 
             const mockRuntime: sinon.SinonStubbedInstance<LocalEnvironment> = mySandBox.createStubInstance(LocalEnvironment);
             mockRuntime.getName.returns(envName);
-            mockRuntime.generate.resolves();
-
-            const getRuntimeStub: sinon.SinonStub = mySandBox.stub(LocalEnvironmentManager.instance(), 'getRuntime').returns(mockRuntime);
 
             const globalState: ExtensionData = GlobalState.get();
             globalState.deletedOneOrgLocalFabric = true;
             await GlobalState.update(globalState);
 
             const globalStateUpdateSpy: sinon.SinonSpy = mySandBox.spy(GlobalState, 'update');
+
+            executeCommandStub.withArgs(ExtensionCommands.START_FABRIC, envEntry).resolves();
 
             await vscode.commands.executeCommand(ExtensionCommands.ADD_ENVIRONMENT);
 
@@ -668,15 +798,16 @@ describe('AddEnvironmentCommand', () => {
 
             showQuickPickItemStub.should.have.been.calledTwice;
             chooseMethodStub.should.have.been.calledOnceWithExactly('Select a method to add an environment', [{label: UserInputUtil.ADD_ENVIRONMENT_FROM_TEMPLATE, data: UserInputUtil.ADD_ENVIRONMENT_FROM_TEMPLATE, description: UserInputUtil.ADD_ENVIRONMENT_FROM_TEMPLATE_DESCRIPTION}, { label: UserInputUtil.ADD_ENVIRONMENT_FROM_DIR, data: UserInputUtil.ADD_ENVIRONMENT_FROM_DIR, description: UserInputUtil.ADD_ENVIRONMENT_FROM_DIR_DESCRIPTION }, { label: UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS, data: UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS, description: UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS_DESCRIPTION }, { label: UserInputUtil.ADD_ENVIRONMENT_FROM_NODES, data: UserInputUtil.ADD_ENVIRONMENT_FROM_NODES, description: UserInputUtil.ADD_ENVIRONMENT_FROM_NODES_DESCRIPTION }]);
-            showQuickPickItemStub.should.have.been.calledWith('Choose a configuration for a new local network', [{label: UserInputUtil.ONE_ORG_TEMPLATE, data: 1}, {label: UserInputUtil.TWO_ORG_TEMPLATE, data: 2}]);
-            chooseNameStub.should.have.been.calledOnceWithExactly(`Enter a name for the environment`);
+            showQuickPickItemStub.should.have.been.calledWith('Choose a configuration for a new local network', [{label: UserInputUtil.ONE_ORG_TEMPLATE, data: 1}, {label: UserInputUtil.TWO_ORG_TEMPLATE, data: 2}, {label: UserInputUtil.CREATE_ADDITIONAL_LOCAL_NETWORKS, data: UserInputUtil.CREATE_ADDITIONAL_LOCAL_NETWORKS_DATA}]);
+            chooseNameStub.should.have.been.calledOnceWithExactly('Enter a name for the environment', '');
             initializeStub.should.have.been.calledWith(envName, 1);
-            getRuntimeStub.should.have.been.calledOnceWith(envName);
-            mockRuntime.generate.should.have.been.calledOnce;
+            executeCommandStub.should.have.been.calledWith(ExtensionCommands.START_FABRIC, envEntry);
 
             executeCommandStub.should.not.have.been.calledWith(ExtensionCommands.IMPORT_NODES_TO_ENVIRONMENT, sinon.match.instanceOf(FabricEnvironmentRegistryEntry));
 
             deleteEnvironmentSpy.should.have.not.been.called;
+            removeRuntimeSpy.should.not.have.been.called;
+
             logSpy.getCall(0).should.have.been.calledWith(LogType.INFO, undefined, 'Add environment');
             logSpy.getCall(1).should.have.been.calledWith(LogType.SUCCESS, 'Successfully added a new environment');
             sendTelemetryEventStub.should.have.been.calledOnceWithExactly('addEnvironmentCommand');
@@ -690,27 +821,31 @@ describe('AddEnvironmentCommand', () => {
             showQuickPickItemStub.resolves({data: 2});
 
             chooseNameStub.resolves(envName);
-            const initializeStub: sinon.SinonStub = mySandBox.stub(LocalEnvironmentManager.instance(), 'initialize').resolves();
+            const envEntry: FabricEnvironmentRegistryEntry = {name: envName, numberOfOrgs: 1, managedRuntime: true, environmentType: EnvironmentType.LOCAL_ENVIRONMENT};
+
+            const initializeStub: sinon.SinonStub = mySandBox.stub(LocalEnvironmentManager.instance(), 'initialize').callsFake(async () => {
+                await FabricEnvironmentRegistry.instance().add(envEntry);
+            });
 
             const mockRuntime: sinon.SinonStubbedInstance<LocalEnvironment> = mySandBox.createStubInstance(LocalEnvironment);
             mockRuntime.getName.returns(envName);
-            mockRuntime.generate.resolves();
 
-            const getRuntimeStub: sinon.SinonStub = mySandBox.stub(LocalEnvironmentManager.instance(), 'getRuntime').returns(mockRuntime);
+            executeCommandStub.withArgs(ExtensionCommands.START_FABRIC, envEntry).resolves();
 
             await vscode.commands.executeCommand(ExtensionCommands.ADD_ENVIRONMENT);
 
             chooseMethodStub.should.have.been.calledWithExactly('Select a method to add an environment', [{label: UserInputUtil.ADD_ENVIRONMENT_FROM_TEMPLATE, data: UserInputUtil.ADD_ENVIRONMENT_FROM_TEMPLATE, description: UserInputUtil.ADD_ENVIRONMENT_FROM_TEMPLATE_DESCRIPTION}, { label: UserInputUtil.ADD_ENVIRONMENT_FROM_DIR, data: UserInputUtil.ADD_ENVIRONMENT_FROM_DIR, description: UserInputUtil.ADD_ENVIRONMENT_FROM_DIR_DESCRIPTION }, { label: UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS, data: UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS, description: UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS_DESCRIPTION }, { label: UserInputUtil.ADD_ENVIRONMENT_FROM_NODES, data: UserInputUtil.ADD_ENVIRONMENT_FROM_NODES, description: UserInputUtil.ADD_ENVIRONMENT_FROM_NODES_DESCRIPTION }]);
-            showQuickPickItemStub.should.have.been.calledWithExactly('Choose a configuration for a new local network', [{label: UserInputUtil.ONE_ORG_TEMPLATE, data: 1}, {label: UserInputUtil.TWO_ORG_TEMPLATE, data: 2}]);
+            showQuickPickItemStub.should.have.been.calledWithExactly('Choose a configuration for a new local network', [{label: UserInputUtil.ONE_ORG_TEMPLATE, data: 1}, {label: UserInputUtil.TWO_ORG_TEMPLATE, data: 2}, {label: UserInputUtil.CREATE_ADDITIONAL_LOCAL_NETWORKS, data: UserInputUtil.CREATE_ADDITIONAL_LOCAL_NETWORKS_DATA}]);
 
-            showInputBoxStub.should.have.been.calledOnceWithExactly(`Enter a name for the environment`);
+            showInputBoxStub.should.have.been.calledOnceWithExactly('Enter a name for the environment', '');
             initializeStub.should.have.been.calledWith(envName, 2);
-            getRuntimeStub.should.have.been.calledOnceWith(envName);
-            mockRuntime.generate.should.have.been.calledOnce;
+            executeCommandStub.should.have.been.calledWith(ExtensionCommands.START_FABRIC, envEntry);
 
             executeCommandStub.should.not.have.been.calledWith(ExtensionCommands.IMPORT_NODES_TO_ENVIRONMENT, sinon.match.instanceOf(FabricEnvironmentRegistryEntry));
 
             deleteEnvironmentSpy.should.have.not.been.called;
+            removeRuntimeSpy.should.not.have.been.called;
+
             logSpy.getCall(0).should.have.been.calledWith(LogType.INFO, undefined, 'Add environment');
             logSpy.getCall(1).should.have.been.calledWith(LogType.SUCCESS, 'Successfully added a new environment');
             sendTelemetryEventStub.should.have.been.calledOnceWithExactly('addEnvironmentCommand');
@@ -723,20 +858,19 @@ describe('AddEnvironmentCommand', () => {
 
             const initializeSpy: sinon.SinonSpy = mySandBox.spy(LocalEnvironmentManager.instance(), 'initialize');
 
-            const getRuntimeSpy: sinon.SinonSpy = mySandBox.spy(LocalEnvironmentManager.instance(), 'getRuntime');
-
             await vscode.commands.executeCommand(ExtensionCommands.ADD_ENVIRONMENT);
 
             chooseMethodStub.should.have.been.calledWithExactly('Select a method to add an environment', [{label: UserInputUtil.ADD_ENVIRONMENT_FROM_TEMPLATE, data: UserInputUtil.ADD_ENVIRONMENT_FROM_TEMPLATE, description: UserInputUtil.ADD_ENVIRONMENT_FROM_TEMPLATE_DESCRIPTION}, { label: UserInputUtil.ADD_ENVIRONMENT_FROM_DIR, data: UserInputUtil.ADD_ENVIRONMENT_FROM_DIR, description: UserInputUtil.ADD_ENVIRONMENT_FROM_DIR_DESCRIPTION }, { label: UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS, data: UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS, description: UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS_DESCRIPTION }, { label: UserInputUtil.ADD_ENVIRONMENT_FROM_NODES, data: UserInputUtil.ADD_ENVIRONMENT_FROM_NODES, description: UserInputUtil.ADD_ENVIRONMENT_FROM_NODES_DESCRIPTION }]);
-            showQuickPickItemStub.should.have.been.calledWithExactly('Choose a configuration for a new local network', [{label: UserInputUtil.ONE_ORG_TEMPLATE, data: 1}, {label: UserInputUtil.TWO_ORG_TEMPLATE, data: 2}]);
+            showQuickPickItemStub.should.have.been.calledWithExactly('Choose a configuration for a new local network', [{label: UserInputUtil.ONE_ORG_TEMPLATE, data: 1}, {label: UserInputUtil.TWO_ORG_TEMPLATE, data: 2}, {label: UserInputUtil.CREATE_ADDITIONAL_LOCAL_NETWORKS, data: UserInputUtil.CREATE_ADDITIONAL_LOCAL_NETWORKS_DATA}]);
 
-            showInputBoxStub.should.not.have.been.calledOnceWithExactly(`Enter a name for the environment`);
+            showInputBoxStub.should.not.have.been.calledOnceWithExactly('Enter a name for the environment', '');
             initializeSpy.should.not.have.been.called;
-            getRuntimeSpy.should.not.have.been.called;
 
             executeCommandStub.should.not.have.been.calledWith(ExtensionCommands.IMPORT_NODES_TO_ENVIRONMENT, sinon.match.instanceOf(FabricEnvironmentRegistryEntry));
 
             deleteEnvironmentSpy.should.have.not.been.called;
+            removeRuntimeSpy.should.not.have.been.called;
+
             logSpy.getCall(0).should.have.been.calledWith(LogType.INFO, undefined, 'Add environment');
             logSpy.should.not.have.been.calledWith(LogType.SUCCESS, 'Successfully added a new environment');
             sendTelemetryEventStub.should.not.have.been.calledOnceWithExactly('addEnvironmentCommand');
@@ -765,15 +899,17 @@ describe('AddEnvironmentCommand', () => {
             showQuickPickItemStub.resolves({data: 1});
 
             chooseNameStub.resolves(envName);
-            const initializeStub: sinon.SinonStub = mySandBox.stub(LocalEnvironmentManager.instance(), 'initialize').resolves();
+            const envEntry: FabricEnvironmentRegistryEntry = {name: envName, numberOfOrgs: 1, managedRuntime: true, environmentType: EnvironmentType.LOCAL_ENVIRONMENT};
+
+            const initializeStub: sinon.SinonStub = mySandBox.stub(LocalEnvironmentManager.instance(), 'initialize').callsFake(async () => {
+                await FabricEnvironmentRegistry.instance().add(envEntry);
+            });
 
             const mockRuntime: sinon.SinonStubbedInstance<LocalEnvironment> = mySandBox.createStubInstance(LocalEnvironment);
             mockRuntime.getName.returns(envName);
 
             const error: Error = new Error(`unable to create new environment`);
-            mockRuntime.generate.throws(error);
-
-            const getRuntimeStub: sinon.SinonStub = mySandBox.stub(LocalEnvironmentManager.instance(), 'getRuntime').returns(mockRuntime);
+            executeCommandStub.withArgs(ExtensionCommands.START_FABRIC, envEntry).throws(error);
 
             executeCommandStub.withArgs(ExtensionCommands.TEARDOWN_FABRIC, undefined, true, envName).resolves();
 
@@ -790,15 +926,15 @@ describe('AddEnvironmentCommand', () => {
             });
 
             chooseMethodStub.should.have.been.calledWithExactly('Select a method to add an environment', [{label: UserInputUtil.ADD_ENVIRONMENT_FROM_TEMPLATE, data: UserInputUtil.ADD_ENVIRONMENT_FROM_TEMPLATE, description: UserInputUtil.ADD_ENVIRONMENT_FROM_TEMPLATE_DESCRIPTION}, { label: UserInputUtil.ADD_ENVIRONMENT_FROM_DIR, data: UserInputUtil.ADD_ENVIRONMENT_FROM_DIR, description: UserInputUtil.ADD_ENVIRONMENT_FROM_DIR_DESCRIPTION }, { label: UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS, data: UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS, description: UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS_DESCRIPTION }, { label: UserInputUtil.ADD_ENVIRONMENT_FROM_NODES, data: UserInputUtil.ADD_ENVIRONMENT_FROM_NODES, description: UserInputUtil.ADD_ENVIRONMENT_FROM_NODES_DESCRIPTION }]);
-            showQuickPickItemStub.should.have.been.calledWithExactly('Choose a configuration for a new local network', [{label: UserInputUtil.ONE_ORG_TEMPLATE, data: 1}, {label: UserInputUtil.TWO_ORG_TEMPLATE, data: 2}]);
-            chooseNameStub.should.have.been.calledOnceWithExactly(`Enter a name for the environment`);
+            showQuickPickItemStub.should.have.been.calledWithExactly('Choose a configuration for a new local network', [{label: UserInputUtil.ONE_ORG_TEMPLATE, data: 1}, {label: UserInputUtil.TWO_ORG_TEMPLATE, data: 2}, {label: UserInputUtil.CREATE_ADDITIONAL_LOCAL_NETWORKS, data: UserInputUtil.CREATE_ADDITIONAL_LOCAL_NETWORKS_DATA}]);
+            chooseNameStub.should.have.been.calledOnceWithExactly('Enter a name for the environment', '');
             initializeStub.should.have.been.calledWith(envName, 1);
-            getRuntimeStub.should.have.been.calledOnceWith(envName);
-            mockRuntime.generate.should.have.been.calledOnce;
 
             executeCommandStub.should.not.have.been.calledWith(ExtensionCommands.IMPORT_NODES_TO_ENVIRONMENT, sinon.match.instanceOf(FabricEnvironmentRegistryEntry));
 
             deleteEnvironmentSpy.should.been.calledOnceWithExactly(envName, true);
+            removeRuntimeSpy.should.have.been.calledOnceWithExactly(envName);
+
             logSpy.getCall(0).should.have.been.calledWith(LogType.INFO, undefined, 'Add environment');
             logSpy.getCall(1).should.have.been.calledWith(LogType.ERROR, `Failed to add a new environment: ${error.message}`, `Failed to add a new environment: ${error.toString()}`);
             sendTelemetryEventStub.should.not.have.been.called;
@@ -821,15 +957,17 @@ describe('AddEnvironmentCommand', () => {
             showQuickPickItemStub.resolves({data: 1});
 
             chooseNameStub.resolves(envName);
-            const initializeStub: sinon.SinonStub = mySandBox.stub(LocalEnvironmentManager.instance(), 'initialize').resolves();
+            const envEntry: FabricEnvironmentRegistryEntry = {name: envName, numberOfOrgs: 1, managedRuntime: true, environmentType: EnvironmentType.LOCAL_ENVIRONMENT};
+
+            const initializeStub: sinon.SinonStub = mySandBox.stub(LocalEnvironmentManager.instance(), 'initialize').callsFake(async () => {
+                await FabricEnvironmentRegistry.instance().add(envEntry);
+            });
 
             const mockRuntime: sinon.SinonStubbedInstance<LocalEnvironment> = mySandBox.createStubInstance(LocalEnvironment);
             mockRuntime.getName.returns(envName);
 
             const error: Error = new Error(`unable to create new environment`);
-            mockRuntime.generate.throws(error);
-
-            const getRuntimeStub: sinon.SinonStub = mySandBox.stub(LocalEnvironmentManager.instance(), 'getRuntime').returns(mockRuntime);
+            executeCommandStub.withArgs(ExtensionCommands.START_FABRIC, envEntry).throws(error);
 
             executeCommandStub.withArgs(ExtensionCommands.TEARDOWN_FABRIC, undefined, true, envName).resolves();
 
@@ -846,51 +984,376 @@ describe('AddEnvironmentCommand', () => {
             });
 
             chooseMethodStub.should.have.been.calledWithExactly('Select a method to add an environment', [{label: UserInputUtil.ADD_ENVIRONMENT_FROM_TEMPLATE, data: UserInputUtil.ADD_ENVIRONMENT_FROM_TEMPLATE, description: UserInputUtil.ADD_ENVIRONMENT_FROM_TEMPLATE_DESCRIPTION}, { label: UserInputUtil.ADD_ENVIRONMENT_FROM_DIR, data: UserInputUtil.ADD_ENVIRONMENT_FROM_DIR, description: UserInputUtil.ADD_ENVIRONMENT_FROM_DIR_DESCRIPTION }, { label: UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS, data: UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS, description: UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS_DESCRIPTION }, { label: UserInputUtil.ADD_ENVIRONMENT_FROM_NODES, data: UserInputUtil.ADD_ENVIRONMENT_FROM_NODES, description: UserInputUtil.ADD_ENVIRONMENT_FROM_NODES_DESCRIPTION }]);
-            showQuickPickItemStub.should.have.been.calledWithExactly('Choose a configuration for a new local network', [{label: UserInputUtil.ONE_ORG_TEMPLATE, data: 1}, {label: UserInputUtil.TWO_ORG_TEMPLATE, data: 2}]);
-            chooseNameStub.should.have.been.calledOnceWithExactly(`Enter a name for the environment`);
+            showQuickPickItemStub.should.have.been.calledWithExactly('Choose a configuration for a new local network', [{label: UserInputUtil.ONE_ORG_TEMPLATE, data: 1}, {label: UserInputUtil.TWO_ORG_TEMPLATE, data: 2}, {label: UserInputUtil.CREATE_ADDITIONAL_LOCAL_NETWORKS, data: UserInputUtil.CREATE_ADDITIONAL_LOCAL_NETWORKS_DATA}]);
+            chooseNameStub.should.have.been.calledOnceWithExactly('Enter a name for the environment', '');
             initializeStub.should.have.been.calledWith(envName, 1);
-            getRuntimeStub.should.have.been.calledOnceWith(envName);
-            mockRuntime.generate.should.have.been.calledOnce;
-
             executeCommandStub.should.not.have.been.calledWith(ExtensionCommands.IMPORT_NODES_TO_ENVIRONMENT, sinon.match.instanceOf(FabricEnvironmentRegistryEntry));
 
             deleteEnvironmentSpy.should.been.calledOnceWithExactly(envName, true);
+            removeRuntimeSpy.should.have.been.calledOnceWithExactly(envName);
             logSpy.getCall(0).should.have.been.calledWith(LogType.INFO, undefined, 'Add environment');
             logSpy.getCall(1).should.have.been.calledWith(LogType.ERROR, `Failed to add a new environment: ${error.message}`, `Failed to add a new environment: ${error.toString()}`);
             sendTelemetryEventStub.should.not.have.been.called;
         });
 
-        // TODO: Add this back in when the tutorial is created
-        // it('should open tutorial if user wants to learn about creating additional networks', async () => {
-        //     getNodesStub.restore();
-        //     chooseMethodStub.resolves({data: UserInputUtil.ADD_ENVIRONMENT_FROM_TEMPLATE});
-        //     showQuickPickItemStub.resolves({data: UserInputUtil.CREATE_ADDITIONAL_LOCAL_NETWORKS});
+        it('should open tutorial if user wants to learn about creating additional networks', async () => {
+            getNodesStub.restore();
+            chooseMethodStub.resolves({data: UserInputUtil.ADD_ENVIRONMENT_FROM_TEMPLATE});
+            showQuickPickItemStub.resolves({data: UserInputUtil.CREATE_ADDITIONAL_LOCAL_NETWORKS_DATA});
 
-        //     const initializeSpy: sinon.SinonSpy = mySandBox.spy(LocalEnvironmentManager.instance(), 'initialize');
+            const initializeSpy: sinon.SinonSpy = mySandBox.spy(LocalEnvironmentManager.instance(), 'initialize');
 
-        //     const getRuntimeSpy: sinon.SinonSpy = mySandBox.spy(LocalEnvironmentManager.instance(), 'getRuntime');
+            await vscode.commands.executeCommand(ExtensionCommands.ADD_ENVIRONMENT);
 
-        //     await vscode.commands.executeCommand(ExtensionCommands.ADD_ENVIRONMENT);
+            chooseMethodStub.should.have.been.calledWithExactly('Select a method to add an environment', [{label: UserInputUtil.ADD_ENVIRONMENT_FROM_TEMPLATE, data: UserInputUtil.ADD_ENVIRONMENT_FROM_TEMPLATE, description: UserInputUtil.ADD_ENVIRONMENT_FROM_TEMPLATE_DESCRIPTION}, { label: UserInputUtil.ADD_ENVIRONMENT_FROM_DIR, data: UserInputUtil.ADD_ENVIRONMENT_FROM_DIR, description: UserInputUtil.ADD_ENVIRONMENT_FROM_DIR_DESCRIPTION }, { label: UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS, data: UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS, description: UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS_DESCRIPTION }, { label: UserInputUtil.ADD_ENVIRONMENT_FROM_NODES, data: UserInputUtil.ADD_ENVIRONMENT_FROM_NODES, description: UserInputUtil.ADD_ENVIRONMENT_FROM_NODES_DESCRIPTION }]);
+            showQuickPickItemStub.should.have.been.calledWithExactly('Choose a configuration for a new local network', [{label: UserInputUtil.ONE_ORG_TEMPLATE, data: 1}, {label: UserInputUtil.TWO_ORG_TEMPLATE, data: 2}, {label: UserInputUtil.CREATE_ADDITIONAL_LOCAL_NETWORKS, data: UserInputUtil.CREATE_ADDITIONAL_LOCAL_NETWORKS_DATA}]);
+            showInputBoxStub.should.not.have.been.calledOnceWithExactly('Enter a name for the environment', '');
+            initializeSpy.should.not.have.been.called;
 
-        //     chooseMethodStub.should.have.been.calledWithExactly('Select a method to add an environment', [{label: UserInputUtil.ADD_ENVIRONMENT_FROM_TEMPLATE, data: UserInputUtil.ADD_ENVIRONMENT_FROM_TEMPLATE, description: UserInputUtil.ADD_ENVIRONMENT_FROM_TEMPLATE_DESCRIPTION}, { label: UserInputUtil.ADD_ENVIRONMENT_FROM_DIR, data: UserInputUtil.ADD_ENVIRONMENT_FROM_DIR, description: UserInputUtil.ADD_ENVIRONMENT_FROM_DIR_DESCRIPTION }, { label: UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS, data: UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS, description: UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS_DESCRIPTION }, { label: UserInputUtil.ADD_ENVIRONMENT_FROM_NODES, data: UserInputUtil.ADD_ENVIRONMENT_FROM_NODES, description: UserInputUtil.ADD_ENVIRONMENT_FROM_NODES_DESCRIPTION }]);
-        //     showQuickPickItemStub.should.have.been.calledWithExactly('Choose a configuration for a new local network', [{label: UserInputUtil.ONE_ORG_TEMPLATE, data: 1}, {label: UserInputUtil.TWO_ORG_TEMPLATE, data: 2}]);
-        //     showInputBoxStub.should.not.have.been.calledOnceWithExactly(`Enter a name for the environment`);
-        //     initializeSpy.should.not.have.been.called;
-        //     getRuntimeSpy.should.not.have.been.called;
+            executeCommandStub.should.not.have.been.calledWith(ExtensionCommands.IMPORT_NODES_TO_ENVIRONMENT, sinon.match.instanceOf(FabricEnvironmentRegistryEntry));
 
-        //     executeCommandStub.should.not.have.been.calledWith(ExtensionCommands.IMPORT_NODES_TO_ENVIRONMENT, sinon.match.instanceOf(FabricEnvironmentRegistryEntry));
+            const extPath: string = ExtensionUtil.getExtensionPath();
+            const tutorialPath: string = path.join(extPath, 'tutorials', 'developer-tutorials', 'create-custom-networks.md');
+            const tutorialUri: vscode.Uri = vscode.Uri.file(tutorialPath);
 
-        //     const extPath: string = ExtensionUtil.getExtensionPath();
-        //     const tutorialPath: string = path.join(extPath, 'packages', 'blockchain-extension', 'tutorials', 'developer-tutorials', 'create-additional-local-networks.md');
+            executeCommandStub.should.have.been.calledWith('markdown.showPreview', tutorialUri);
 
-        //     const executeCallOne: sinon.SinonSpyCall = executeCommandStub.getCall(1);
-        //     executeCallOne.should.have.been.calledWith('markdown.showPreview', sinon.match.any);
-        //     executeCallOne.args[1].path.should.equal(tutorialPath);
+            deleteEnvironmentSpy.should.have.not.been.called;
+            logSpy.getCall(0).should.have.been.calledWith(LogType.INFO, undefined, 'Add environment');
+            logSpy.should.not.have.been.calledWith(LogType.SUCCESS, 'Successfully added a new environment');
+            sendTelemetryEventStub.should.not.have.been.calledOnceWithExactly('addEnvironmentCommand');
+        });
 
-        //     deleteEnvironmentSpy.should.have.not.been.called;
-        //     logSpy.getCall(0).should.have.been.calledWith(LogType.INFO, undefined, 'Add environment');
-        //     logSpy.should.not.have.been.calledWith(LogType.SUCCESS, 'Successfully added a new environment');
-        //     sendTelemetryEventStub.should.not.have.been.calledOnceWithExactly('addEnvironmentCommand');
-        // });
+        it('should handle when user cancels while choosing location of the OpsTool instance', async () => {
+            chooseMethodStub.resolves({data: UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS});
+            showQuickPickYesNoStub.withArgs('Are you connecting to an IBM Blockchain Platform service instance on IBM Cloud?').resolves();
+
+            await vscode.commands.executeCommand(ExtensionCommands.ADD_ENVIRONMENT);
+
+            const environments: Array<FabricEnvironmentRegistryEntry> = await FabricEnvironmentRegistry.instance().getAll();
+            environments.length.should.equal(0);
+
+            cloudAccountGetAccessTokenStub.should.have.not.been.called;
+            chooseNameStub.should.have.not.been.called;
+            axiosGetStub.should.have.not.been.called;
+            chooseBlockchainStub.should.have.not.been.called;
+            deleteEnvironmentSpy.should.have.not.been.called;
+            removeRuntimeSpy.should.not.have.been.called;
+            executeCommandStub.should.have.not.been.calledWith(ExtensionCommands.EDIT_NODE_FILTERS, sinon.match.instanceOf(FabricEnvironmentRegistryEntry), true, UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS);
+            executeCommandStub.should.have.not.been.calledWith(ExtensionCommands.REFRESH_ENVIRONMENTS);
+            logSpy.getCall(0).should.have.been.calledWith(LogType.INFO, undefined, 'Add environment');
+        });
+
+        it('should suggest default name when adding environment from a SaaS OpsTool instance (SaaS)', async () => {
+            chooseMethodStub.resolves({data: UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS});
+            chooseNameStub.onFirstCall().returnsArg(1);
+            showQuickPickYesNoStub.withArgs('Are you connecting to an IBM Blockchain Platform service instance on IBM Cloud?').resolves(UserInputUtil.YES);
+            axiosGetStub.onFirstCall().resolves(resourcesResponseMock);
+            axiosGetStub.onSecondCall().resolves(consoleStatusMock);
+
+            await vscode.commands.executeCommand(ExtensionCommands.ADD_ENVIRONMENT);
+
+            const environments: Array<FabricEnvironmentRegistryEntry> = await FabricEnvironmentRegistry.instance().getAll();
+            environments.length.should.equal(1);
+            environments[0].should.deep.equal({
+                name: originalSaaSName,
+                url: urlSaaS,
+                environmentType: EnvironmentType.SAAS_OPS_TOOLS_ENVIRONMENT
+            });
+
+            cloudAccountGetAccessTokenStub.should.have.been.called;
+            axiosGetStub.should.have.been.calledTwice;
+            chooseBlockchainStub.should.have.not.been.called;
+            deleteEnvironmentSpy.should.have.not.been.called;
+            removeRuntimeSpy.should.not.have.been.called;
+            executeCommandStub.should.have.been.calledWith(ExtensionCommands.EDIT_NODE_FILTERS, sinon.match.instanceOf(FabricEnvironmentRegistryEntry), true, UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS);
+            executeCommandStub.should.have.been.calledWith(ExtensionCommands.REFRESH_ENVIRONMENTS);
+            logSpy.getCall(0).should.have.been.calledWith(LogType.INFO, undefined, 'Add environment');
+            logSpy.getCall(1).should.have.been.calledWith(LogType.SUCCESS, 'Successfully added a new environment');
+            sendTelemetryEventStub.should.have.been.calledOnceWithExactly('addEnvironmentCommand');
+        });
+
+        it('should handle errors getting the access token when adding an OpsTool instance (SaaS)', async () => {
+            chooseMethodStub.resolves({data: UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS});
+            chooseNameStub.onFirstCall().resolves('mySaaSOpsToolsEnvironment');
+            showQuickPickYesNoStub.withArgs('Are you connecting to an IBM Blockchain Platform service instance on IBM Cloud?').resolves(UserInputUtil.YES);
+            const error: Error = new Error('some error');
+            cloudAccountGetAccessTokenStub.rejects(error);
+
+            await vscode.commands.executeCommand(ExtensionCommands.ADD_ENVIRONMENT);
+
+            const environments: Array<FabricEnvironmentRegistryEntry> = await FabricEnvironmentRegistry.instance().getAll();
+            environments.length.should.equal(0);
+
+            cloudAccountGetAccessTokenStub.should.have.been.calledOnce;
+            axiosGetStub.should.have.not.been.called;
+            chooseBlockchainStub.should.have.not.been.called;
+            deleteEnvironmentSpy.should.have.not.been.called;
+            chooseNameStub.should.have.not.been.called;
+            removeRuntimeSpy.should.not.have.been.called;
+            executeCommandStub.should.have.not.been.calledWith(ExtensionCommands.EDIT_NODE_FILTERS, sinon.match.instanceOf(FabricEnvironmentRegistryEntry), true, UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS);
+            executeCommandStub.should.have.not.been.calledWith(ExtensionCommands.REFRESH_ENVIRONMENTS);
+            logSpy.getCall(0).should.have.been.calledWith(LogType.INFO, undefined, 'Add environment');
+            logSpy.getCall(1).should.have.been.calledWith(LogType.ERROR, `Failed to add a new environment: ${error.message}`, `Failed to add a new environment: ${error.toString()}`);
+        });
+
+        it('should handle user canceling while getting access token when adding an OpsTool instance (SaaS)', async () => {
+            chooseMethodStub.resolves({data: UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS});
+            showQuickPickYesNoStub.withArgs('Are you connecting to an IBM Blockchain Platform service instance on IBM Cloud?').resolves(UserInputUtil.YES);
+            cloudAccountGetAccessTokenStub.resolves();
+
+            await vscode.commands.executeCommand(ExtensionCommands.ADD_ENVIRONMENT);
+
+            const environments: Array<FabricEnvironmentRegistryEntry> = await FabricEnvironmentRegistry.instance().getAll();
+            environments.length.should.equal(0);
+
+            cloudAccountGetAccessTokenStub.should.have.been.called;
+            axiosGetStub.should.have.not.been.called;
+            chooseBlockchainStub.should.have.not.been.called;
+            deleteEnvironmentSpy.should.have.not.been.called;
+            chooseNameStub.should.have.not.been.called;
+            removeRuntimeSpy.should.not.have.been.called;
+            executeCommandStub.should.have.not.been.calledWith(ExtensionCommands.EDIT_NODE_FILTERS, sinon.match.instanceOf(FabricEnvironmentRegistryEntry), true, UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS);
+            executeCommandStub.should.have.not.been.calledWith(ExtensionCommands.REFRESH_ENVIRONMENTS);
+            logSpy.getCall(0).should.have.been.calledWith(LogType.INFO, undefined, 'Add environment');
+        });
+
+        it('should handle more than one page of resources when adding an OpsTool instance (SaaS)', async () => {
+            chooseMethodStub.resolves({data: UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS});
+            chooseNameStub.onFirstCall().resolves('mySaaSOpsToolsEnvironment');
+            showQuickPickYesNoStub.withArgs('Are you connecting to an IBM Blockchain Platform service instance on IBM Cloud?').resolves(UserInputUtil.YES);
+            axiosGetStub.onFirstCall().resolves({
+                data: {
+                    next_url: '/some/resource/path',
+                    resources: [{
+                        resource_plan_id: 'otherService-standard',
+                        name: 'myOtherService10',
+                        guid: 'someGUID10',
+                        dashboard_url: 'https://some.dashboard.url10/some/path'
+                            }]
+                        }
+                    });
+            axiosGetStub.onSecondCall().resolves(resourcesResponseMock);
+            axiosGetStub.onThirdCall().resolves(consoleStatusMock);
+
+            await vscode.commands.executeCommand(ExtensionCommands.ADD_ENVIRONMENT);
+
+            const environments: Array<FabricEnvironmentRegistryEntry> = await FabricEnvironmentRegistry.instance().getAll();
+            environments.length.should.equal(1);
+
+            cloudAccountGetAccessTokenStub.should.have.been.called;
+            axiosGetStub.should.have.been.calledThrice;
+            chooseBlockchainStub.should.have.not.been.called;
+            deleteEnvironmentSpy.should.have.not.been.called;
+            removeRuntimeSpy.should.not.have.been.called;
+            executeCommandStub.should.have.been.calledWith(ExtensionCommands.EDIT_NODE_FILTERS, sinon.match.instanceOf(FabricEnvironmentRegistryEntry), true, UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS);
+            executeCommandStub.should.have.been.calledWith(ExtensionCommands.REFRESH_ENVIRONMENTS);
+            logSpy.getCall(0).should.have.been.calledWith(LogType.INFO, undefined, 'Add environment');
+            logSpy.getCall(1).should.have.been.calledWith(LogType.SUCCESS, 'Successfully added a new environment');
+            sendTelemetryEventStub.should.have.been.calledOnceWithExactly('addEnvironmentCommand');
+
+        });
+
+        it('should fail if there are no IBM Blockchain Platform resources for the selected account when adding an OpsTool instance (SaaS)', async () => {
+            chooseMethodStub.resolves({data: UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS});
+            chooseNameStub.onFirstCall().resolves('mySaaSOpsToolsEnvironment');
+            showQuickPickYesNoStub.withArgs('Are you connecting to an IBM Blockchain Platform service instance on IBM Cloud?').resolves(UserInputUtil.YES);
+            const noBlockchainError: Error = new Error('There are no IBM Blockchain Platform service instances associated with the chosen account');
+            axiosGetStub.onFirstCall().resolves({
+                data: {
+                        next_url: null,
+                        resources: [{
+                                        resource_plan_id: 'otherService-standard',
+                                        name: 'myOtherService',
+                                        guid: 'someGUID2',
+                                        dashboard_url: 'https://some.dashboard.url2/some/path'
+                                    }]
+                }
+            });
+
+            await vscode.commands.executeCommand(ExtensionCommands.ADD_ENVIRONMENT);
+
+            const environments: Array<FabricEnvironmentRegistryEntry> = await FabricEnvironmentRegistry.instance().getAll();
+            environments.length.should.equal(0);
+
+            cloudAccountGetAccessTokenStub.should.have.been.called;
+            chooseNameStub.should.have.not.been.called;
+            axiosGetStub.should.have.been.calledOnce;
+            chooseBlockchainStub.should.have.not.been.called;
+            deleteEnvironmentSpy.should.have.not.been.called;
+            removeRuntimeSpy.should.not.have.been.called;
+            executeCommandStub.should.have.not.been.calledWith(ExtensionCommands.EDIT_NODE_FILTERS, sinon.match.instanceOf(FabricEnvironmentRegistryEntry), true, UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS);
+            executeCommandStub.should.have.not.been.calledWith(ExtensionCommands.REFRESH_ENVIRONMENTS);
+            logSpy.getCall(0).should.have.been.calledWith(LogType.INFO, undefined, 'Add environment');
+            logSpy.getCall(1).should.have.been.calledWith(LogType.ERROR, `Failed to add a new environment: ${noBlockchainError.message}`, `Failed to add a new environment: ${noBlockchainError.toString()}`);
+        });
+
+        it('should ask user to select resource if more than one IBM Blockchain platform exists when adding an OpsTool instance (SaaS)', async () => {
+            chooseMethodStub.resolves({data: UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS});
+            chooseNameStub.onFirstCall().resolves('mySaaSOpsToolsEnvironment');
+            showQuickPickYesNoStub.withArgs('Are you connecting to an IBM Blockchain Platform service instance on IBM Cloud?').resolves(UserInputUtil.YES);
+            axiosGetStub.onFirstCall().resolves({
+                data: {
+                        next_url: null,
+                        resources: [{
+                                        resource_plan_id: 'blockchain-standard',
+                                        name: 'myBlockchainPlatform',
+                                        guid: 'someGUID1',
+                                        dashboard_url: 'https://some.dashboard.url1/some/path'
+                                    }, {
+                                        resource_plan_id: 'blockchain-standard',
+                                        name: 'myBlockchainPlatform2',
+                                        guid: 'someGUID2',
+                                        dashboard_url: 'https://some.dashboard.url2/some/path'
+                                    }]
+                }
+            });
+            chooseBlockchainStub.resolves(
+                {
+                    data: {
+                        resource_plan_id: 'blockchain-standard',
+                        name: 'myBlockchainPlatform',
+                        guid: 'someGUID1',
+                        dashboard_url: 'https://some.dashboard.url1/some/path'
+                    },
+                    label: 'myBlockchainPlatform',
+                    description: 'someGUID1'
+                }
+            );
+            axiosGetStub.onSecondCall().resolves(consoleStatusMock);
+
+            await vscode.commands.executeCommand(ExtensionCommands.ADD_ENVIRONMENT);
+
+            const environments: Array<FabricEnvironmentRegistryEntry> = await FabricEnvironmentRegistry.instance().getAll();
+            environments.length.should.equal(1);
+            environments[0].should.deep.equal({
+                name: 'mySaaSOpsToolsEnvironment',
+                url: urlSaaS,
+                environmentType: EnvironmentType.SAAS_OPS_TOOLS_ENVIRONMENT
+            });
+
+            cloudAccountGetAccessTokenStub.should.have.been.called;
+            axiosGetStub.should.have.been.calledTwice;
+            chooseBlockchainStub.should.have.been.calledOnce;
+            deleteEnvironmentSpy.should.have.not.been.called;
+            removeRuntimeSpy.should.not.have.been.called;
+            executeCommandStub.should.have.been.calledWith(ExtensionCommands.EDIT_NODE_FILTERS, sinon.match.instanceOf(FabricEnvironmentRegistryEntry), true, UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS);
+            executeCommandStub.should.have.been.calledWith(ExtensionCommands.REFRESH_ENVIRONMENTS);
+            logSpy.getCall(0).should.have.been.calledWith(LogType.INFO, undefined, 'Add environment');
+            logSpy.getCall(1).should.have.been.calledWith(LogType.SUCCESS, 'Successfully added a new environment');
+            sendTelemetryEventStub.should.have.been.calledOnceWithExactly('addEnvironmentCommand');
+        });
+
+        it('should handle user canceling while selecting an IBM Blockchain platform when adding an OpsTool instance (SaaS)', async () => {
+            chooseMethodStub.resolves({data: UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS});
+            chooseNameStub.onFirstCall().resolves('mySaaSOpsToolsEnvironment');
+            showQuickPickYesNoStub.withArgs('Are you connecting to an IBM Blockchain Platform service instance on IBM Cloud?').resolves(UserInputUtil.YES);
+            axiosGetStub.onFirstCall().resolves({
+                data: {
+                        next_url: null,
+                        resources: [{
+                                        resource_plan_id: 'blockchain-standard',
+                                        name: 'myBlockchainPlatform',
+                                        guid: 'someGUID1',
+                                        dashboard_url: 'https://some.dashboard.url1/some/path'
+                                    }, {
+                                        resource_plan_id: 'blockchain-standard',
+                                        name: 'myBlockchainPlatform2',
+                                        guid: 'someGUID2',
+                                        dashboard_url: 'https://some.dashboard.url2/some/path'
+                                    }]
+                }
+            });
+            chooseBlockchainStub.resolves();
+
+            await vscode.commands.executeCommand(ExtensionCommands.ADD_ENVIRONMENT);
+
+            const environments: Array<FabricEnvironmentRegistryEntry> = await FabricEnvironmentRegistry.instance().getAll();
+            environments.length.should.equal(0);
+
+            cloudAccountGetAccessTokenStub.should.have.been.called;
+            axiosGetStub.should.have.been.calledOnce;
+            chooseBlockchainStub.should.have.been.calledOnce;
+            deleteEnvironmentSpy.should.have.not.been.called;
+            removeRuntimeSpy.should.not.have.been.called;
+            executeCommandStub.should.have.not.been.calledWith(ExtensionCommands.EDIT_NODE_FILTERS, sinon.match.instanceOf(FabricEnvironmentRegistryEntry), true, UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS);
+            executeCommandStub.should.have.not.been.calledWith(ExtensionCommands.REFRESH_ENVIRONMENTS);
+            logSpy.getCall(0).should.have.been.calledWith(LogType.INFO, undefined, 'Add environment');
+        });
+
+        it('should fail if OpsTools not deployed adding an OpsTool instance (SaaS)', async () => {
+            chooseMethodStub.resolves({data: UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS});
+            chooseNameStub.onFirstCall().resolves('mySaaSOpsToolsEnvironment');
+            showQuickPickYesNoStub.withArgs('Are you connecting to an IBM Blockchain Platform service instance on IBM Cloud?').resolves(UserInputUtil.YES);
+            axiosGetStub.onFirstCall().resolves(resourcesResponseMock);
+            axiosGetStub.onSecondCall().resolves({
+                status: 100,
+                data: {
+                    endpoint: urlSaaS
+                }
+            });
+            const deploymentError: Error = new Error(`Got status 100. Please make sure the IBM Blockchain Platform Console deployment has finished before adding environment.`);
+            await vscode.commands.executeCommand(ExtensionCommands.ADD_ENVIRONMENT);
+
+            const environments: Array<FabricEnvironmentRegistryEntry> = await FabricEnvironmentRegistry.instance().getAll();
+            environments.length.should.equal(0);
+
+            cloudAccountGetAccessTokenStub.should.have.been.called;
+            axiosGetStub.should.have.been.calledTwice;
+            chooseBlockchainStub.should.have.not.been.called;
+            deleteEnvironmentSpy.should.have.not.been.called;
+            removeRuntimeSpy.should.not.have.been.called;
+            executeCommandStub.should.have.not.been.calledWith(ExtensionCommands.EDIT_NODE_FILTERS, sinon.match.instanceOf(FabricEnvironmentRegistryEntry), true, UserInputUtil.ADD_ENVIRONMENT_FROM_OPS_TOOLS);
+            executeCommandStub.should.have.not.been.calledWith(ExtensionCommands.REFRESH_ENVIRONMENTS);
+            logSpy.getCall(0).should.have.been.calledWith(LogType.INFO, undefined, 'Add environment');
+            logSpy.getCall(1).should.have.been.calledWith(LogType.ERROR, `Failed to add a new environment: ${deploymentError.message}`, `Failed to add a new environment: ${deploymentError.toString()}`);
+        });
+
+        it('should add a Microfab environment', async () => {
+            mySandBox.stub(FeatureFlagManager, 'enabled').withArgs(FeatureFlagManager.MICROFAB).resolves(true);
+            chooseMethodStub.resolves({data: UserInputUtil.ADD_ENVIRONMENT_FROM_MICROFAB});
+            chooseNameStub.onFirstCall().resolves('microfabEnvironment');
+            showInputBoxStub.withArgs('Enter the URL of the Microfab network you want to connect to').resolves('http://console.microfab.example.org');
+
+            await vscode.commands.executeCommand(ExtensionCommands.ADD_ENVIRONMENT);
+
+            const extDir: string = vscode.workspace.getConfiguration().get(SettingConfigurations.EXTENSION_DIRECTORY);
+            const resolvedExtDir: string = FileSystemUtil.getDirPath(extDir);
+            const envDir: string = path.join(resolvedExtDir, FileConfigurations.FABRIC_ENVIRONMENTS, 'microfabEnvironment');
+
+            const environments: Array<FabricEnvironmentRegistryEntry> = await FabricEnvironmentRegistry.instance().getAll();
+            environments.length.should.equal(1);
+            environments[0].should.deep.equal({
+                name: 'microfabEnvironment',
+                url: 'http://console.microfab.example.org',
+                environmentType: EnvironmentType.MICROFAB_ENVIRONMENT,
+                environmentDirectory: envDir
+            });
+        });
+
+        it('should not add a Microfab environment if the user cancels the URL input box', async () => {
+            mySandBox.stub(FeatureFlagManager, 'enabled').withArgs(FeatureFlagManager.MICROFAB).resolves(true);
+            chooseMethodStub.resolves({data: UserInputUtil.ADD_ENVIRONMENT_FROM_MICROFAB});
+            chooseNameStub.onFirstCall().resolves('microfabEnvironment');
+            showInputBoxStub.withArgs('Enter the URL of the Microfab network you want to connect to').resolves();
+
+            await vscode.commands.executeCommand(ExtensionCommands.ADD_ENVIRONMENT);
+
+            const environments: Array<FabricEnvironmentRegistryEntry> = await FabricEnvironmentRegistry.instance().getAll();
+            environments.length.should.equal(0);
+        });
+
+        it('should not add a Microfab environment if the user cancels the name input box', async () => {
+            mySandBox.stub(FeatureFlagManager, 'enabled').withArgs(FeatureFlagManager.MICROFAB).resolves(true);
+            chooseMethodStub.resolves({data: UserInputUtil.ADD_ENVIRONMENT_FROM_MICROFAB});
+            chooseNameStub.onFirstCall().resolves();
+            showInputBoxStub.withArgs('Enter the URL of the Microfab network you want to connect to').resolves('http://console.microfab.example.org');
+
+            await vscode.commands.executeCommand(ExtensionCommands.ADD_ENVIRONMENT);
+
+            const environments: Array<FabricEnvironmentRegistryEntry> = await FabricEnvironmentRegistry.instance().getAll();
+            environments.length.should.equal(0);
+        });
+
     });
 });

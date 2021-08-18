@@ -83,6 +83,7 @@ export async function dissociateTransactionDataDirectory(chaincode?: Instantiate
         await fabricGatewayRegistry.update(gateway);
 
         outputAdapter.log(LogType.SUCCESS, `Successfully dissociated "${chaincodeLabel}" from its transaction data directory`);
+
     } catch (error) {
         outputAdapter.log(LogType.ERROR, `Unable to dissociate transaction data directory: ${error.message}`, `Unable to dissociate transaction data directory: ${error.toString()}`);
     }

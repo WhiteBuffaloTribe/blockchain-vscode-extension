@@ -22,9 +22,9 @@ import { FabricWalletGenerator } from 'ibm-blockchain-platform-wallet';
 import { URL } from 'url';
 
 export class FabricEnvironmentConnection implements IFabricEnvironmentConnection {
+    public environmentName: string;
 
     private outputAdapter: OutputAdapter;
-    private environmentName: string;
     private nodes: Map<string, FabricNode> = new Map<string, FabricNode>();
     private client: Client;
     private peers: Map<string, Client.Peer> = new Map<string, Client.Peer>();
@@ -47,32 +47,37 @@ export class FabricEnvironmentConnection implements IFabricEnvironmentConnection
         this.client.setCryptoSuite(Client.newCryptoSuite());
         for (const node of nodes) {
             switch (node.type) {
-                case FabricNodeType.PEER: {
-                    const url: URL = new URL(node.api_url);
-                    let pem: string;
-                    if (node.pem) {
-                        pem = Buffer.from(node.pem, 'base64').toString();
-                    }
-                    let sslTargetNameOverride: string = url.hostname;
-                    if (node.ssl_target_name_override) {
-                        sslTargetNameOverride = node.ssl_target_name_override;
-                    }
-                    const peer: Client.Peer = this.client.newPeer(node.api_url, { pem, 'ssl-target-name-override': sslTargetNameOverride });
-                    this.peers.set(node.name, peer);
-                    break;
-                }
+                case FabricNodeType.PEER:
                 case FabricNodeType.ORDERER: {
-                    const url: URL = new URL(node.api_url);
+                    // Build the default options - don't specify pem or ssl_target_name_override unless they're actually specified
+                    // as part of the node, as they stop us being able to set some of the 'grpc.*' options below.
                     let pem: string;
                     if (node.pem) {
                         pem = Buffer.from(node.pem, 'base64').toString();
                     }
-                    let sslTargetNameOverride: string = url.hostname;
+                    let sslTargetNameOverride: string;
                     if (node.ssl_target_name_override) {
                         sslTargetNameOverride = node.ssl_target_name_override;
                     }
-                    const orderer: Client.Orderer = this.client.newOrderer(node.api_url, { pem, 'ssl-target-name-override': sslTargetNameOverride });
-                    this.orderers.set(node.name, orderer);
+                    const defaultOptions: Client.ConnectionOpts = { pem, 'ssl-target-name-override': sslTargetNameOverride };
+                    // Merge these with any user provided options.
+                    const mergedOptions: Client.ConnectionOpts = Object.assign(defaultOptions, node.api_options);
+                    // Figure out what the name of the node should be; if the hostname is localhost, and any of these options are
+                    // being used to set the actual name in the host/authority header - then we should use that name instead.
+                    const nameOverrides: string[] = ['grpc.default_authority', 'grpc.ssl_target_name_override'];
+                    for (const nameOverride of nameOverrides) {
+                        if (mergedOptions[nameOverride]) {
+                            mergedOptions.name = mergedOptions[nameOverride];
+                            break;
+                        }
+                    }
+                    if (node.type === FabricNodeType.PEER) {
+                        const peer: Client.Peer = this.client.newPeer(node.api_url, mergedOptions);
+                        this.peers.set(node.name, peer);
+                    } else {
+                        const orderer: Client.Orderer = this.client.newOrderer(node.api_url, mergedOptions);
+                        this.orderers.set(node.name, orderer);
+                    }
                     break;
                 }
                 case FabricNodeType.CERTIFICATE_AUTHORITY: {
@@ -111,13 +116,25 @@ export class FabricEnvironmentConnection implements IFabricEnvironmentConnection
         return Array.from(this.peers.keys()).sort();
     }
 
-    public async createChannelMap(): Promise<Map<string, Array<string>>> {
+    public async createChannelMap(): Promise<{channelMap: Map<string, Array<string>>, v2channels: Array<string>}> {
         try {
             const channelMap: Map<string, Array<string>> = new Map<string, Array<string>>();
+            const v2channels: Array<string> = [];
 
-            for (const [peerName] of this.peers) {
+            for (const [peerName, peer] of this.peers.entries()) {
                 const channelNames: Array<string> = await this.getAllChannelNamesForPeer(peerName);
                 for (const channelName of channelNames) {
+                    const channel: Client.Channel = this.getOrCreateChannel(channelName);
+
+                    const configEnvelope: any = await channel.getChannelConfig(peer);
+                    const capabilities: string[] = channel.getChannelCapabilities(configEnvelope);
+                    if (capabilities.includes('V2_0')) {
+                        if (!v2channels.includes(channelName)) {
+                            v2channels.push(channelName);
+                        }
+                        continue;
+                    }
+
                     if (!channelMap.has(channelName)) {
                         channelMap.set(channelName, [peerName]);
                     } else {
@@ -126,11 +143,16 @@ export class FabricEnvironmentConnection implements IFabricEnvironmentConnection
                 }
             }
 
-            return channelMap;
+            if (channelMap.size === 0) {
+                throw new Error(`There are no channels with V1 capabilities enabled.`);
+            }
+            return {channelMap: channelMap, v2channels: v2channels};
 
         } catch (error) {
             if (error.message && error.message.includes('Received http2 header with status: 503')) { // If gRPC can't connect to Fabric
                 throw new Error(`Cannot connect to Fabric: ${error.message}`);
+            } else if (error.message.includes('There are no channels with V1 capabilities enabled.')) {
+                throw new Error(`Unable to connect to network, ${error.message}`);
             } else {
                 throw new Error(`Error querying channels: ${error.message}`);
             }
@@ -157,11 +179,11 @@ export class FabricEnvironmentConnection implements IFabricEnvironmentConnection
     public async getAllInstantiatedChaincodes(): Promise<Array<FabricChaincode>> {
 
         try {
-            const channelMap: Map<string, Array<string>> = await this.createChannelMap();
+            const createChannelsResult: {channelMap: Map<string, string[]>, v2channels: string[]} = await this.createChannelMap();
 
             const chaincodes: Array<FabricChaincode> = []; // We can change the array type if we need more detailed chaincodes in future
 
-            for (const [channelName, peerNames] of channelMap) {
+            for (const [channelName, peerNames] of createChannelsResult.channelMap) {
                 const channelChaincodes: Array<FabricChaincode> = await this.getInstantiatedChaincode(peerNames, channelName); // Returns channel chaincodes
                 for (const chaincode of channelChaincodes) { // For each channel chaincodes, push it to the 'chaincodes' array if it doesn't exist
 

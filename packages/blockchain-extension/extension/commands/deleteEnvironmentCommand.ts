@@ -13,6 +13,8 @@
 */
 'use strict';
 import * as vscode from 'vscode';
+import * as path from 'path';
+import * as fs from 'fs-extra';
 import { UserInputUtil, IBlockchainQuickPickItem } from './UserInputUtil';
 import { VSCodeBlockchainOutputAdapter } from '../logging/VSCodeBlockchainOutputAdapter';
 import { FabricEnvironmentRegistry, FabricEnvironmentRegistryEntry, LogType, FabricGatewayRegistryEntry, EnvironmentType, FabricRuntimeUtil } from 'ibm-blockchain-platform-common';
@@ -22,6 +24,8 @@ import { ExtensionCommands } from '../../ExtensionCommands';
 import { FabricGatewayConnectionManager } from '../fabric/FabricGatewayConnectionManager';
 import { SettingConfigurations } from '../../configurations';
 import { GlobalState, ExtensionData } from '../util/GlobalState';
+import { LocalEnvironmentManager } from '../fabric/environments/LocalEnvironmentManager';
+import { ManagedAnsibleEnvironmentManager } from '../fabric/environments/ManagedAnsibleEnvironmentManager';
 
 export async function deleteEnvironment(environment: FabricEnvironmentTreeItem | FabricEnvironmentRegistryEntry, force: boolean = false): Promise<void> {
     const outputAdapter: VSCodeBlockchainOutputAdapter = VSCodeBlockchainOutputAdapter.instance();
@@ -29,6 +33,7 @@ export async function deleteEnvironment(environment: FabricEnvironmentTreeItem |
     let environmentsToDelete: FabricEnvironmentRegistryEntry[];
 
     try {
+
         if (!environment) {
             // If called from command palette
             // Ask for environment to delete
@@ -66,7 +71,8 @@ export async function deleteEnvironment(environment: FabricEnvironmentTreeItem |
         const connectedEnvironmentRegistry: FabricEnvironmentRegistryEntry = FabricEnvironmentManager.instance().getEnvironmentRegistryEntry();
         const connectedGatewayRegistry: FabricGatewayRegistryEntry = await FabricGatewayConnectionManager.instance().getGatewayRegistryEntry();
 
-        const localSettings: any = await vscode.workspace.getConfiguration().get(SettingConfigurations.FABRIC_RUNTIME, vscode.ConfigurationTarget.Global);
+        const _settings: any = await vscode.workspace.getConfiguration().get(SettingConfigurations.FABRIC_RUNTIME, vscode.ConfigurationTarget.Global);
+        const localSettings: any = JSON.parse(JSON.stringify(_settings));
 
         for (const _environment of environmentsToDelete) {
             if (connectedEnvironmentRegistry && connectedEnvironmentRegistry.name === _environment.name) {
@@ -96,7 +102,22 @@ export async function deleteEnvironment(environment: FabricEnvironmentTreeItem |
             }
 
             await FabricEnvironmentRegistry.instance().delete(_environment.name);
+            if (_environment.environmentType === EnvironmentType.LOCAL_ENVIRONMENT) {
+                LocalEnvironmentManager.instance().removeRuntime(_environment.name);
+            } else if (_environment.environmentType === EnvironmentType.ANSIBLE_ENVIRONMENT) {
+                if (_environment.managedRuntime === true) {
+                    ManagedAnsibleEnvironmentManager.instance().removeRuntime(_environment.name);
+                }
 
+                const walletsDirPath: string = path.join(_environment.environmentDirectory, 'wallets');
+                const walletPaths: string[] = (await fs.readdir(walletsDirPath)).filter((walletPath: string) => !walletPath.startsWith('.'));
+                for (const wallet of walletPaths) {
+                    const configPath: string = path.join(walletsDirPath, wallet, '.config.json');
+                    if (await fs.pathExists(configPath)) {
+                        await fs.remove(configPath);
+                    }
+                }
+            }
         }
 
         await vscode.workspace.getConfiguration().update(SettingConfigurations.FABRIC_RUNTIME, localSettings, vscode.ConfigurationTarget.Global);

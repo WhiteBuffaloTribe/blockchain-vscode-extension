@@ -20,13 +20,15 @@ import { Attribute } from '../fabricModel/FabricCertificate';
 
 export interface IFabricEnvironmentConnection {
 
+    environmentName: string;
+
     connect(nodes: FabricNode[]): Promise<void>;
 
     disconnect(): void;
 
     getAllPeerNames(): Array<string>;
 
-    createChannelMap(): Promise<Map<string, Array<string>>>;
+    createChannelMap(): Promise<{channelMap: Map<string, Array<string>>, v2channels: Array<string>}>;
 
     getInstantiatedChaincode(peerNames: Array<string>, channelName: string): Promise<Array<FabricChaincode>>;
 

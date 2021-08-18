@@ -29,6 +29,7 @@ import Axios from 'axios';
 import { TestUtil } from '../TestUtil';
 import { GlobalState, ExtensionData, DEFAULT_EXTENSION_DATA } from '../../extension/util/GlobalState.js';
 import { Dependencies } from '../../extension/dependencies/Dependencies';
+import * as OS from 'os';
 
 chai.should();
 chai.use(chaiAsPromised);
@@ -430,16 +431,16 @@ describe('DependencyManager Tests', () => {
             utimesFileStub.should.have.been.called;
         });
 
-        it('should throw error if finds no versions', async () => {
+        it('should throw error if no versions found and fallback fails', async () => {
             mySandBox.stub(process, 'platform').value('win32');
             mySandBox.stub(process, 'arch').value('x64');
-
+            mySandBox.stub(fs, 'readJSON').resolves([]); // imitate this failing
             axiosStub.withArgs('https://raw.githubusercontent.com/electron/releases/master/lite.json').resolves({ data: [] });
 
             const sendCommandStub: sinon.SinonStub = mySandBox.stub(CommandUtil, 'sendCommandWithOutput').resolves();
             const dependencyManager: DependencyManager = DependencyManager.instance();
 
-            await dependencyManager.installNativeDependencies().should.be.eventually.rejectedWith(/Could not get electron verion, no matching electron versions for modules 69/);
+            await dependencyManager.installNativeDependencies().should.be.eventually.rejectedWith(/Could not get electron version, no matching electron versions for modules 69/);
 
             dependencyManager['dependencies'].length.should.equal(1);
             dependencyManager['dependencies'][0].should.equal('grpc');
@@ -447,7 +448,7 @@ describe('DependencyManager Tests', () => {
             sendCommandStub.should.not.have.been.called;
         });
 
-        it('should handle error from getting electron info', async () => {
+        it('should handle getting electron info failing and fallback succeeding', async () => {
             mySandBox.stub(process, 'platform').value('win32');
             mySandBox.stub(process, 'arch').value('x64');
 
@@ -456,14 +457,56 @@ describe('DependencyManager Tests', () => {
             const sendCommandStub: sinon.SinonStub = mySandBox.stub(CommandUtil, 'sendCommandWithOutput').resolves();
             const dependencyManager: DependencyManager = DependencyManager.instance();
 
-            await dependencyManager.installNativeDependencies().should.be.eventually.rejectedWith(/Could not get electron verion, some error/);
+            const readJSONSpy: sinon.SinonSpy = mySandBox.spy(fs, 'readJSON');
+            await dependencyManager.installNativeDependencies().should.not.be.rejectedWith(/Could not get electron version, some error/);
 
             dependencyManager['dependencies'].length.should.equal(1);
             dependencyManager['dependencies'][0].should.equal('grpc');
 
-            sendCommandStub.should.not.have.been.called;
+            // If this fails, run compile again to move the fallback-build-info.json into the build directory
+            sendCommandStub.should.have.been.calledOnce;
 
+            const jsonPath: string = path.join(__dirname, '..', '..', 'fallback-build-info.json');
+            readJSONSpy.should.have.been.calledOnceWithExactly(jsonPath);
         });
+
+        const platforms: { name: string, platform: string, arch: string }[] = [
+            { name: 'Windows', platform: 'win32', arch: 'x64' },
+            { name: 'macOS', platform: 'darwin', arch: 'x64' },
+            { name: 'Linux', platform: 'linux', arch: 'x64' }
+        ];
+
+        function testEclipseChe(name: string, platform: string, arch: string): void {
+            it(`should install the Node.js version of the binaries when running on Eclipse Che (${name})`, async () => {
+                extensionKindStub.onThirdCall().returns({ extensionKind: 2 });
+                mySandBox.stub(process, 'platform').value(platform);
+                mySandBox.stub(process, 'arch').value(arch);
+                mySandBox.stub(ExtensionUtil, 'isChe').returns(true);
+
+                const sendCommandStub: sinon.SinonStub = mySandBox.stub(CommandUtil, 'sendCommandWithOutput').resolves();
+                const dependencyManager: DependencyManager = DependencyManager.instance();
+
+                await dependencyManager.installNativeDependencies();
+
+                dependencyManager['dependencies'].length.should.equal(1);
+                dependencyManager['dependencies'][0].should.equal('grpc');
+
+                if (platform !== 'win32') {
+                    sendCommandStub.should.have.been.calledWith('npm', ['rebuild', 'grpc', '--target=10.16.0', '--runtime=node', '--update-binary', '--fallback-to-build', `--target_arch=x64`], sinon.match.string, null, sinon.match.instanceOf(VSCodeBlockchainOutputAdapter));
+                } else {
+                    sendCommandStub.should.have.been.calledWith('npm', ['rebuild', 'grpc', '--target=10.16.0', '--runtime=node', '--update-binary', '--fallback-to-build', `--target_arch=${arch}`], sinon.match.string, null, sinon.match.instanceOf(VSCodeBlockchainOutputAdapter), sinon.match.truthy);
+                }
+
+                existsStub.should.not.have.been.called;
+
+                writeFileStub.should.have.been.called;
+                utimesFileStub.should.have.been.called;
+            });
+        }
+
+        for (const { name, platform, arch } of platforms) {
+            testEclipseChe(name, platform, arch);
+        }
     });
 
     describe('hasPreReqsInstalled', () => {
@@ -495,22 +538,65 @@ describe('DependencyManager Tests', () => {
 
         });
 
-        it(`should return false if Node version isn't between 8 and 11`, async () => {
-            const dependencies: any = {
+        it(`should return false if wrong Node version`, async () => {
+            // should be >=10.15.3 < 11.0.0|| >=12.15.0 < 13.0.0
+            const dependencyManager: DependencyManager = DependencyManager.instance();
+            getPreReqVersionsStub.resolves({
                 node: {
                     name: 'Node.js',
-                    version: '12',
+                    version: '8.12.0',
                     requiredVersion: Dependencies.NODEJS_REQUIRED
                 }
-            };
+            });
 
-            getPreReqVersionsStub.resolves(dependencies);
+            const resultNode8: boolean = await dependencyManager.hasPreReqsInstalled();
+            resultNode8.should.equal(false);
 
-            const dependencyManager: DependencyManager = DependencyManager.instance();
-            const result: boolean = await dependencyManager.hasPreReqsInstalled();
+            getPreReqVersionsStub.resolves({
+                node: {
+                    name: 'Node.js',
+                    version: '10.15.2',
+                    requiredVersion: Dependencies.NODEJS_REQUIRED
+                }
+            });
 
-            result.should.equal(false);
-            getPreReqVersionsStub.should.have.been.calledOnce;
+            const resultNode10low: boolean = await dependencyManager.hasPreReqsInstalled();
+            resultNode10low.should.equal(false);
+
+            getPreReqVersionsStub.resolves({
+                node: {
+                    name: 'Node.js',
+                    version: '11.1.1',
+                    requiredVersion: Dependencies.NODEJS_REQUIRED
+                }
+            });
+
+            const resultNode11: boolean = await dependencyManager.hasPreReqsInstalled();
+            resultNode11.should.equal(false);
+
+            getPreReqVersionsStub.resolves({
+                node: {
+                    name: 'Node.js',
+                    version: '12.14.0',
+                    requiredVersion: Dependencies.NODEJS_REQUIRED
+                }
+            });
+
+            const resultNode12low: boolean = await dependencyManager.hasPreReqsInstalled();
+            resultNode12low.should.equal(false);
+
+            getPreReqVersionsStub.resolves({
+                node: {
+                    name: 'Node.js',
+                    version: '13.0.0',
+                    requiredVersion: Dependencies.NODEJS_REQUIRED
+                }
+            });
+
+            const resultNode13: boolean = await dependencyManager.hasPreReqsInstalled();
+            resultNode13.should.equal(false);
+
+            getPreReqVersionsStub.getCalls().length.should.equal(5);
 
         });
 
@@ -518,7 +604,7 @@ describe('DependencyManager Tests', () => {
             const dependencies: any = {
                 node: {
                     name: 'Node.js',
-                    version: '8.12.0',
+                    version: '10.15.3',
                     requiredVersion: Dependencies.NODEJS_REQUIRED
                 },
                 npm: {
@@ -541,7 +627,7 @@ describe('DependencyManager Tests', () => {
             const dependencies: any = {
                 node: {
                     name: 'Node.js',
-                    version: '8.12.0',
+                    version: '10.15.3',
                     requiredVersion: Dependencies.NODEJS_REQUIRED
                 },
                 npm: {
@@ -565,7 +651,7 @@ describe('DependencyManager Tests', () => {
             const dependencies: any = {
                 node: {
                     name: 'Node.js',
-                    version: '8.12.0',
+                    version: '10.15.3',
                     requiredVersion: Dependencies.NODEJS_REQUIRED
                 },
                 npm: {
@@ -593,7 +679,7 @@ describe('DependencyManager Tests', () => {
             const dependencies: any = {
                 node: {
                     name: 'Node.js',
-                    version: '8.12.0',
+                    version: '10.15.3',
                     requiredVersion: Dependencies.NODEJS_REQUIRED
                 },
                 npm: {
@@ -622,7 +708,7 @@ describe('DependencyManager Tests', () => {
             const dependencies: any = {
                 node: {
                     name: 'Node.js',
-                    version: '8.12.0',
+                    version: '10.15.3',
                     requiredVersion: Dependencies.NODEJS_REQUIRED
                 },
                 npm: {
@@ -655,7 +741,7 @@ describe('DependencyManager Tests', () => {
             const dependencies: any = {
                 node: {
                     name: 'Node.js',
-                    version: '8.12.0',
+                    version: '10.15.3',
                     requiredVersion: Dependencies.NODEJS_REQUIRED
                 },
                 npm: {
@@ -689,7 +775,7 @@ describe('DependencyManager Tests', () => {
             const dependencies: any = {
                 node: {
                     name: 'Node.js',
-                    version: '8.12.0',
+                    version: '10.15.3',
                     requiredVersion: Dependencies.NODEJS_REQUIRED
                 },
                 npm: {
@@ -729,7 +815,7 @@ describe('DependencyManager Tests', () => {
             const dependencies: any = {
                 node: {
                     name: 'Node.js',
-                    version: '8.12.0',
+                    version: '10.15.3',
                     requiredVersion: Dependencies.NODEJS_REQUIRED
                 },
                 npm: {
@@ -770,7 +856,7 @@ describe('DependencyManager Tests', () => {
             const dependencies: any = {
                 node: {
                     name: 'Node.js',
-                    version: '8.12.0',
+                    version: '10.15.3',
                     requiredVersion: Dependencies.NODEJS_REQUIRED
                 },
                 npm: {
@@ -802,7 +888,7 @@ describe('DependencyManager Tests', () => {
             const dependencies: any = {
                 node: {
                     name: 'Node.js',
-                    version: '8.12.0',
+                    version: '10.15.3',
                     requiredVersion: Dependencies.NODEJS_REQUIRED
                 },
                 npm: {
@@ -841,7 +927,7 @@ describe('DependencyManager Tests', () => {
                 const dependencies: any = {
                     node: {
                         name: 'Node.js',
-                        version: '8.12.0',
+                        version: '10.15.3',
                         requiredVersion: Dependencies.NODEJS_REQUIRED
                     },
                     npm: {
@@ -885,7 +971,7 @@ describe('DependencyManager Tests', () => {
                 const dependencies: any = {
                     node: {
                         name: 'Node.js',
-                        version: '8.12.0',
+                        version: '10.15.3',
                         requiredVersion: Dependencies.NODEJS_REQUIRED
                     },
                     npm: {
@@ -908,7 +994,7 @@ describe('DependencyManager Tests', () => {
                     },
                     openssl: {
                         name: 'OpenSSL',
-                        version: '1.0.6',
+                        version: '1.1.1',
                         requiredVersion: Dependencies.OPENSSL_REQUIRED
                     }
                 };
@@ -929,7 +1015,7 @@ describe('DependencyManager Tests', () => {
                 const dependencies: any = {
                     node: {
                         name: 'Node.js',
-                        version: '8.12.0',
+                        version: '10.15.3',
                         requiredVersion: Dependencies.NODEJS_REQUIRED
                     },
                     npm: {
@@ -978,7 +1064,7 @@ describe('DependencyManager Tests', () => {
                 const dependencies: any = {
                     node: {
                         name: 'Node.js',
-                        version: '8.12.0',
+                        version: '10.15.3',
                         requiredVersion: Dependencies.NODEJS_REQUIRED
                     },
                     npm: {
@@ -1031,7 +1117,7 @@ describe('DependencyManager Tests', () => {
                 const dependencies: any = {
                     node: {
                         name: 'Node.js',
-                        version: '8.12.0',
+                        version: '10.15.3',
                         requiredVersion: Dependencies.NODEJS_REQUIRED
                     },
                     npm: {
@@ -1086,7 +1172,7 @@ describe('DependencyManager Tests', () => {
                 const dependencies: any = {
                     node: {
                         name: 'Node.js',
-                        version: '8.12.0',
+                        version: '10.15.3',
                         requiredVersion: Dependencies.NODEJS_REQUIRED
                     },
                     npm: {
@@ -1114,7 +1200,7 @@ describe('DependencyManager Tests', () => {
                 const dependencies: any = {
                     node: {
                         name: 'Node.js',
-                        version: '8.12.0',
+                        version: '10.15.3',
                         requiredVersion: Dependencies.NODEJS_REQUIRED
                     },
                     npm: {
@@ -1158,7 +1244,7 @@ describe('DependencyManager Tests', () => {
                 const dependencies: any = {
                     node: {
                         name: 'Node.js',
-                        version: '8.12.0',
+                        version: '10.15.3',
                         requiredVersion: Dependencies.NODEJS_REQUIRED
                     },
                     npm: {
@@ -1205,7 +1291,7 @@ describe('DependencyManager Tests', () => {
                 const dependencies: any = {
                     node: {
                         name: 'Node.js',
-                        version: '8.12.0',
+                        version: '10.15.3',
                         requiredVersion: Dependencies.NODEJS_REQUIRED
                     },
                     npm: {
@@ -1249,7 +1335,7 @@ describe('DependencyManager Tests', () => {
                 const dependencies: any = {
                     node: {
                         name: 'Node.js',
-                        version: '8.12.0',
+                        version: '10.15.3',
                         requiredVersion: Dependencies.NODEJS_REQUIRED
                     },
                     npm: {
@@ -1294,7 +1380,7 @@ describe('DependencyManager Tests', () => {
                 const dependencies: any = {
                     node: {
                         name: 'Node.js',
-                        version: '8.12.0',
+                        version: '10.15.3',
                         requiredVersion: Dependencies.NODEJS_REQUIRED
                     },
                     npm: {
@@ -1343,7 +1429,7 @@ describe('DependencyManager Tests', () => {
                 const dependencies: any = {
                     node: {
                         name: 'Node.js',
-                        version: '8.12.0',
+                        version: '10.15.3',
                         requiredVersion: Dependencies.NODEJS_REQUIRED
                     },
                     npm: {
@@ -1397,7 +1483,7 @@ describe('DependencyManager Tests', () => {
                 const dependencies: any = {
                     node: {
                         name: 'Node.js',
-                        version: '8.12.0',
+                        version: '10.15.3',
                         requiredVersion: Dependencies.NODEJS_REQUIRED
                     },
                     npm: {
@@ -1451,7 +1537,7 @@ describe('DependencyManager Tests', () => {
                 const dependencies: any = {
                     node: {
                         name: 'Node.js',
-                        version: '8.12.0',
+                        version: '10.15.3',
                         requiredVersion: Dependencies.NODEJS_REQUIRED
                     },
                     npm: {
@@ -1509,7 +1595,7 @@ describe('DependencyManager Tests', () => {
                 const dependencies: any = {
                     node: {
                         name: 'Node.js',
-                        version: '8.12.0',
+                        version: '10.15.3',
                         requiredVersion: Dependencies.NODEJS_REQUIRED
                     },
                     npm: {
@@ -1571,7 +1657,7 @@ describe('DependencyManager Tests', () => {
                 const dependencies: any = {
                     node: {
                         name: 'Node.js',
-                        version: '8.12.0',
+                        version: '10.15.3',
                         requiredVersion: Dependencies.NODEJS_REQUIRED
                     },
                     npm: {
@@ -1631,13 +1717,13 @@ describe('DependencyManager Tests', () => {
 
             });
 
-            it(`should return true if all the optional prereqs have been installed`, async () => {
+            it(`should return false if the optional Node Test Runner Extension hasn't been installed`, async () => {
                 mySandBox.stub(process, 'platform').value('linux');
 
                 const dependencies: any = {
                     node: {
                         name: 'Node.js',
-                        version: '8.12.0',
+                        version: '10.15.3',
                         requiredVersion: Dependencies.NODEJS_REQUIRED
                     },
                     npm: {
@@ -1684,6 +1770,158 @@ describe('DependencyManager Tests', () => {
                     javaTestRunnerExtension: {
                         name: 'Java Test Runner Extension',
                         version: '1.0.0'
+                    },
+                    nodeTestRunnerExtension: {
+                        name: 'Node Test Runner Extension',
+                        version: undefined
+                    }
+                };
+
+                getPreReqVersionsStub.resolves(dependencies);
+
+                const dependencyManager: DependencyManager = DependencyManager.instance();
+                const result: boolean = await dependencyManager.hasPreReqsInstalled(undefined, true);
+
+                result.should.equal(false);
+                getPreReqVersionsStub.should.have.been.calledOnce;
+
+            });
+
+            it(`should return false if the optional IBM Cloud Account Extension hasn't been installed`, async () => {
+                mySandBox.stub(process, 'platform').value('linux');
+
+                const dependencies: any = {
+                    node: {
+                        name: 'Node.js',
+                        version: '10.15.3',
+                        requiredVersion: Dependencies.NODEJS_REQUIRED
+                    },
+                    npm: {
+                        name: 'npm',
+                        version: '6.4.1',
+                        requiredVersion: Dependencies.NPM_REQUIRED
+                    },
+                    docker: {
+                        name: 'Docker',
+                        version: '18.1.2',
+                        requiredVersion: Dependencies.DOCKER_REQUIRED
+                    },
+                    dockerCompose: {
+                        name: 'Docker Compose',
+                        version: '1.21.1',
+                        requiredVersion: Dependencies.DOCKER_COMPOSE_REQUIRED
+                    },
+                    systemRequirements: {
+                        name: 'System Requirements',
+                        complete: true
+                    },
+                    go: {
+                        name: 'Go',
+                        version: '2.0.0',
+                        requiredVersion: Dependencies.GO_REQUIRED
+                    },
+                    goExtension: {
+                        name: 'Go Extension',
+                        version: '1.0.0'
+                    },
+                    java: {
+                        name: 'Java OpenJDK 8',
+                        version: '1.8.0',
+                        requiredVersion: Dependencies.JAVA_REQUIRED
+                    },
+                    javaLanguageExtension: {
+                        name: 'Java Language Support Extension',
+                        version: '1.0.0'
+                    },
+                    javaDebuggerExtension: {
+                        name: 'Java Debugger Extension',
+                        version: '1.0.0'
+                    },
+                    javaTestRunnerExtension: {
+                        name: 'Java Test Runner Extension',
+                        version: '1.0.0'
+                    },
+                    nodeTestRunnerExtension: {
+                        name: 'Node Test Runner Extension',
+                        version: '1.0.0'
+                    },
+                    ibmCloudAccountExtension: {
+                        name: 'IBM Cloud Account Extension',
+                        version: undefined
+                    }
+                };
+
+                getPreReqVersionsStub.resolves(dependencies);
+
+                const dependencyManager: DependencyManager = DependencyManager.instance();
+                const result: boolean = await dependencyManager.hasPreReqsInstalled(undefined, true);
+
+                result.should.equal(false);
+                getPreReqVersionsStub.should.have.been.calledOnce;
+
+            });
+
+            it(`should return true if all the optional prereqs have been installed`, async () => {
+                mySandBox.stub(process, 'platform').value('linux');
+
+                const dependencies: any = {
+                    node: {
+                        name: 'Node.js',
+                        version: '10.15.3',
+                        requiredVersion: Dependencies.NODEJS_REQUIRED
+                    },
+                    npm: {
+                        name: 'npm',
+                        version: '6.4.1',
+                        requiredVersion: Dependencies.NPM_REQUIRED
+                    },
+                    docker: {
+                        name: 'Docker',
+                        version: '18.1.2',
+                        requiredVersion: Dependencies.DOCKER_REQUIRED
+                    },
+                    dockerCompose: {
+                        name: 'Docker Compose',
+                        version: '1.21.1',
+                        requiredVersion: Dependencies.DOCKER_COMPOSE_REQUIRED
+                    },
+                    systemRequirements: {
+                        name: 'System Requirements',
+                        complete: true
+                    },
+                    go: {
+                        name: 'Go',
+                        version: '2.0.0',
+                        requiredVersion: Dependencies.GO_REQUIRED
+                    },
+                    goExtension: {
+                        name: 'Go Extension',
+                        version: '1.0.0'
+                    },
+                    java: {
+                        name: 'Java OpenJDK 8',
+                        version: '1.8.0',
+                        requiredVersion: Dependencies.JAVA_REQUIRED
+                    },
+                    javaLanguageExtension: {
+                        name: 'Java Language Support Extension',
+                        version: '1.0.0'
+                    },
+                    javaDebuggerExtension: {
+                        name: 'Java Debugger Extension',
+                        version: '1.0.0'
+                    },
+                    javaTestRunnerExtension: {
+                        name: 'Java Test Runner Extension',
+                        version: '1.0.0'
+                    },
+                    nodeTestRunnerExtension: {
+                        name: 'Node Test Runner Extension',
+                        version: '1.0.0'
+                    },
+                    ibmCloudAccountExtension: {
+                        name: 'IBM Cloud Account Extension',
+                        version: '1.0.0'
                     }
                 };
 
@@ -1705,6 +1943,7 @@ describe('DependencyManager Tests', () => {
         let sendCommandStub: sinon.SinonStub;
         let extensionData: ExtensionData;
         let dependencyManager: DependencyManager;
+        let totalmemStub: sinon.SinonStub;
         before(async () => {
             await TestUtil.setupTests(mySandBox);
         });
@@ -1714,9 +1953,11 @@ describe('DependencyManager Tests', () => {
             extensionData = DEFAULT_EXTENSION_DATA;
             extensionData.preReqPageShown = true;
             extensionData.dockerForWindows = false;
-            extensionData.systemRequirements = false;
             extensionData.version = currentExtensionVersion;
             extensionData.generatorVersion = extDeps['generator-fabric'];
+
+            totalmemStub = mySandBox.stub(OS, 'totalmem');
+            totalmemStub.returns(4294967296);
 
             await GlobalState.update(extensionData);
 
@@ -1739,6 +1980,7 @@ describe('DependencyManager Tests', () => {
             const _dependencyManager: DependencyManager = DependencyManager.instance();
             const result: any = await _dependencyManager.getPreReqVersions();
             result.node.version.should.equal('8.12.0');
+            totalmemStub.should.have.been.calledOnce;
         });
 
         it('should get version of node', async () => {
@@ -1748,6 +1990,7 @@ describe('DependencyManager Tests', () => {
 
             const result: any = await dependencyManager.getPreReqVersions();
             result.node.version.should.equal('8.12.0');
+            totalmemStub.should.have.been.calledOnce;
         });
 
         it('should not get version of node if command not found', async () => {
@@ -1757,6 +2000,7 @@ describe('DependencyManager Tests', () => {
 
             const result: any = await dependencyManager.getPreReqVersions();
             should.not.exist(result.node.version);
+            totalmemStub.should.have.been.calledOnce;
         });
 
         it('should not get version of node if unexpected format is returned', async () => {
@@ -1766,6 +2010,7 @@ describe('DependencyManager Tests', () => {
 
             const result: any = await dependencyManager.getPreReqVersions();
             should.not.exist(result.node.version);
+            totalmemStub.should.have.been.calledOnce;
         });
 
         it('should get version of npm', async () => {
@@ -1775,6 +2020,7 @@ describe('DependencyManager Tests', () => {
 
             const result: any = await dependencyManager.getPreReqVersions();
             result.npm.version.should.equal('6.4.1');
+            totalmemStub.should.have.been.calledOnce;
         });
 
         it('should not get version of npm if command not found', async () => {
@@ -1784,6 +2030,7 @@ describe('DependencyManager Tests', () => {
 
             const result: any = await dependencyManager.getPreReqVersions();
             should.not.exist(result.npm.version);
+            totalmemStub.should.have.been.calledOnce;
         });
 
         it('should not get version of npm if unexpected format is returned', async () => {
@@ -1793,6 +2040,7 @@ describe('DependencyManager Tests', () => {
 
             const result: any = await dependencyManager.getPreReqVersions();
             should.not.exist(result.npm.version);
+            totalmemStub.should.have.been.calledOnce;
         });
 
         it('should get version of Docker', async () => {
@@ -1802,6 +2050,7 @@ describe('DependencyManager Tests', () => {
 
             const result: any = await dependencyManager.getPreReqVersions();
             result.docker.version.should.equal('18.6.1');
+            totalmemStub.should.have.been.calledOnce;
         });
 
         it('should not get version of Docker if command not found', async () => {
@@ -1811,6 +2060,7 @@ describe('DependencyManager Tests', () => {
 
             const result: any = await dependencyManager.getPreReqVersions();
             should.not.exist(result.docker.version);
+            totalmemStub.should.have.been.calledOnce;
         });
 
         it('should not get version of Docker if unexpected format is returned', async () => {
@@ -1820,6 +2070,7 @@ describe('DependencyManager Tests', () => {
 
             const result: any = await dependencyManager.getPreReqVersions();
             should.not.exist(result.docker.version);
+            totalmemStub.should.have.been.calledOnce;
         });
 
         it('should get version of Docker Compose', async () => {
@@ -1829,6 +2080,7 @@ describe('DependencyManager Tests', () => {
 
             const result: any = await dependencyManager.getPreReqVersions();
             result.dockerCompose.version.should.equal('1.22.0');
+            totalmemStub.should.have.been.calledOnce;
         });
 
         it('should not get version of Docker Compose if command not found', async () => {
@@ -1838,6 +2090,7 @@ describe('DependencyManager Tests', () => {
 
             const result: any = await dependencyManager.getPreReqVersions();
             should.not.exist(result.dockerCompose.version);
+            totalmemStub.should.have.been.calledOnce;
         });
 
         it('should not get version of Docker Compose if unexpected format is returned', async () => {
@@ -1847,6 +2100,7 @@ describe('DependencyManager Tests', () => {
 
             const result: any = await dependencyManager.getPreReqVersions();
             should.not.exist(result.dockerCompose.version);
+            totalmemStub.should.have.been.calledOnce;
         });
 
         it('should get version of Go', async () => {
@@ -1856,6 +2110,7 @@ describe('DependencyManager Tests', () => {
 
             const result: any = await dependencyManager.getPreReqVersions();
             result.go.version.should.equal('1.12.7');
+            totalmemStub.should.have.been.calledOnce;
         });
 
         it('should not get version of Go if command not found', async () => {
@@ -1865,6 +2120,7 @@ describe('DependencyManager Tests', () => {
 
             const result: any = await dependencyManager.getPreReqVersions();
             should.not.exist(result.go.version);
+            totalmemStub.should.have.been.calledOnce;
         });
 
         it('should not get version of Go if unexpected format is returned', async () => {
@@ -1874,6 +2130,7 @@ describe('DependencyManager Tests', () => {
 
             const result: any = await dependencyManager.getPreReqVersions();
             should.not.exist(result.go.version);
+            totalmemStub.should.have.been.calledOnce;
         });
 
         it('should get version of Go Extension', async () => {
@@ -1888,6 +2145,7 @@ describe('DependencyManager Tests', () => {
 
             const result: any = await dependencyManager.getPreReqVersions();
             result.goExtension.version.should.equal('1.0.0');
+            totalmemStub.should.have.been.calledOnce;
         });
 
         it('should not get version of Go Extension if it cannot be found', async () => {
@@ -1898,6 +2156,7 @@ describe('DependencyManager Tests', () => {
 
             const result: any = await dependencyManager.getPreReqVersions();
             should.not.exist(result.goExtension.version);
+            totalmemStub.should.have.been.calledOnce;
         });
 
         it('should get version of Java', async () => {
@@ -1906,6 +2165,7 @@ describe('DependencyManager Tests', () => {
 
             const result: any = await dependencyManager.getPreReqVersions();
             result.java.version.should.equal('1.8.0');
+            totalmemStub.should.have.been.calledOnce;
         });
 
         it('should not get version of Java if it cannot be found', async () => {
@@ -1914,6 +2174,7 @@ describe('DependencyManager Tests', () => {
 
             const result: any = await dependencyManager.getPreReqVersions();
             should.not.exist(result.java.version);
+            totalmemStub.should.have.been.calledOnce;
         });
 
         it('should not get version of Java if unexpected format is returned', async () => {
@@ -1923,6 +2184,7 @@ describe('DependencyManager Tests', () => {
 
             const result: any = await dependencyManager.getPreReqVersions();
             should.not.exist(result.java.version);
+            totalmemStub.should.have.been.calledOnce;
         });
 
         it('should get version of Java Language Extension', async () => {
@@ -1937,6 +2199,7 @@ describe('DependencyManager Tests', () => {
 
             const result: any = await dependencyManager.getPreReqVersions();
             result.javaLanguageExtension.version.should.equal('2.0.0');
+            totalmemStub.should.have.been.calledOnce;
         });
 
         it('should not get version of Java Language Extension if it cannot be found', async () => {
@@ -1947,6 +2210,7 @@ describe('DependencyManager Tests', () => {
 
             const result: any = await dependencyManager.getPreReqVersions();
             should.not.exist(result.javaLanguageExtension.version);
+            totalmemStub.should.have.been.calledOnce;
         });
 
         it('should get version of Java Debugger Extension', async () => {
@@ -1961,6 +2225,7 @@ describe('DependencyManager Tests', () => {
 
             const result: any = await dependencyManager.getPreReqVersions();
             result.javaDebuggerExtension.version.should.equal('3.0.0');
+            totalmemStub.should.have.been.calledOnce;
         });
 
         it('should not get version of Java Debugger Extension if it cannot be found', async () => {
@@ -1971,6 +2236,7 @@ describe('DependencyManager Tests', () => {
 
             const result: any = await dependencyManager.getPreReqVersions();
             should.not.exist(result.javaDebuggerExtension.version);
+            totalmemStub.should.have.been.calledOnce;
         });
 
         it('should get version of Java Test Runner Extension', async () => {
@@ -1983,6 +2249,7 @@ describe('DependencyManager Tests', () => {
 
             const result: any = await dependencyManager.getPreReqVersions();
             result.javaTestRunnerExtension.version.should.equal('2.0.0');
+            totalmemStub.should.have.been.calledOnce;
         });
 
         it('should not get version of Java Test Runner Extension if it cannot be found', async () => {
@@ -1993,37 +2260,88 @@ describe('DependencyManager Tests', () => {
 
             const result: any = await dependencyManager.getPreReqVersions();
             should.not.exist(result.javaTestRunnerExtension.version);
+            totalmemStub.should.have.been.calledOnce;
         });
 
-        it('should return true if user has agreed to system requirements', async () => {
+        it('should get version of Node Test Runner Extension', async () => {
+            const getExtensionStub: sinon.SinonStub = mySandBox.stub(vscode.extensions, 'getExtension');
+            getExtensionStub.withArgs('oshri6688.javascript-test-runner').returns({
+                packageJSON: {
+                    version: '2.0.0'
+                }
+            });
+
+            const result: any = await dependencyManager.getPreReqVersions();
+            result.nodeTestRunnerExtension.version.should.equal('2.0.0');
+            totalmemStub.should.have.been.calledOnce;
+        });
+
+        it('should not get version of Node Test Runner Extension if it cannot be found', async () => {
+            mySandBox.stub(process, 'platform').value('some_other_platform');
+
+            const getExtensionStub: sinon.SinonStub = mySandBox.stub(vscode.extensions, 'getExtension');
+            getExtensionStub.withArgs('oshri6688.javascript-test-runner').returns(undefined);
+
+            const result: any = await dependencyManager.getPreReqVersions();
+            should.not.exist(result.nodeTestRunnerExtension.version);
+            totalmemStub.should.have.been.calledOnce;
+        });
+
+        it('should get version of IBM Cloud Account Extension', async () => {
+            const getExtensionStub: sinon.SinonStub = mySandBox.stub(vscode.extensions, 'getExtension');
+            getExtensionStub.withArgs('IBM.ibmcloud-account').returns({
+                packageJSON: {
+                    version: '2.0.0'
+                }
+            });
+
+            const result: any = await dependencyManager.getPreReqVersions();
+            result.ibmCloudAccountExtension.version.should.equal('2.0.0');
+            totalmemStub.should.have.been.calledOnce;
+        });
+
+        it('should not get version of IBM Cloud Account Extension if it cannot be found', async () => {
+            mySandBox.stub(process, 'platform').value('some_other_platform');
+
+            const getExtensionStub: sinon.SinonStub = mySandBox.stub(vscode.extensions, 'getExtension');
+            getExtensionStub.withArgs('IBM.ibmcloud-account').returns(undefined);
+
+            const result: any = await dependencyManager.getPreReqVersions();
+            should.not.exist(result.ibmCloudAccountExtension.version);
+            totalmemStub.should.have.been.calledOnce;
+        });
+
+        it('should return true if the computer resources meet the system requirements', async () => {
             mySandBox.stub(process, 'platform').value('some_other_platform');
 
             const newExtensionData: ExtensionData = DEFAULT_EXTENSION_DATA;
 
             newExtensionData.preReqPageShown = true;
             newExtensionData.dockerForWindows = false;
-            newExtensionData.systemRequirements = true;
             newExtensionData.version = currentExtensionVersion;
             newExtensionData.generatorVersion = extDeps['generator-fabric'];
             await GlobalState.update(newExtensionData);
 
             const result: any = await dependencyManager.getPreReqVersions();
             result.systemRequirements.complete.should.equal(true);
+            totalmemStub.should.have.been.calledOnce;
         });
 
-        it(`should return false if user hasn't agreed to system requirements`, async () => {
+        it(`should return false if the computer resources doesn't meet the system requirements`, async () => {
             mySandBox.stub(process, 'platform').value('some_other_platform');
+
+            totalmemStub.returns(4294967295);
 
             const newExtensionData: ExtensionData = DEFAULT_EXTENSION_DATA;
             newExtensionData.preReqPageShown = true;
             newExtensionData.dockerForWindows = false;
-            newExtensionData.systemRequirements = false;
             newExtensionData.version = currentExtensionVersion;
             newExtensionData.generatorVersion = extDeps['generator-fabric'];
             await GlobalState.update(newExtensionData);
 
             const result: any = await dependencyManager.getPreReqVersions();
             result.systemRequirements.complete.should.equal(false);
+            totalmemStub.should.have.been.calledOnce;
         });
 
         it('should only get non-local fabric versions', async () => {
@@ -2042,58 +2360,47 @@ describe('DependencyManager Tests', () => {
                 existsStub = mySandBox.stub(fs, 'pathExists');
             });
 
-            it('should check if OpenSSL (32-bit) is installed', async () => {
-                mySandBox.stub(process, 'platform').value('win32');
-
-                existsStub.withArgs(`C:\\OpenSSL-Win32`).resolves(true);
-                existsStub.withArgs(`C:\\OpenSSL-Win64`).resolves(false);
-                sendCommandStub.withArgs(`C:\\OpenSSL-Win32\\bin\\openssl.exe version`).resolves('OpenSSL 1.0.2k  26 Jan 2017');
-
-                const result: any = await dependencyManager.getPreReqVersions();
-                result.openssl.version.should.equal('1.0.2');
-            });
-
             it('should check if OpenSSL (64-bit) is installed', async () => {
                 mySandBox.stub(process, 'platform').value('win32');
 
-                existsStub.withArgs(`C:\\OpenSSL-Win32`).resolves(false);
                 existsStub.withArgs(`C:\\OpenSSL-Win64`).resolves(true);
-                sendCommandStub.withArgs(`C:\\OpenSSL-Win64\\bin\\openssl.exe version`).resolves('OpenSSL 1.1.1d  26 Jan 2017');
+                sendCommandStub.withArgs(`C:\\OpenSSL-Win64\\bin\\openssl.exe version`).resolves('OpenSSL 1.0.2d  26 Jan 2017');
 
                 const result: any = await dependencyManager.getPreReqVersions();
-                result.openssl.version.should.equal('1.1.1');
+                result.openssl.version.should.equal('1.0.2');
+                totalmemStub.should.have.been.calledOnce;
             });
 
             it('should not get version of OpenSSL if command not found', async () => {
                 mySandBox.stub(process, 'platform').value('win32');
 
-                existsStub.withArgs(`C:\\OpenSSL-Win32`).resolves(true);
-                existsStub.withArgs(`C:\\OpenSSL-Win64`).resolves(false);
-                sendCommandStub.withArgs(`C:\\OpenSSL-Win32\\bin\\openssl.exe version`).resolves('openssl not recognized');
+                existsStub.withArgs(`C:\\OpenSSL-Win64`).resolves(true);
+                sendCommandStub.withArgs(`C:\\OpenSSL-Win64\\bin\\openssl.exe version`).resolves('openssl not recognized');
 
                 const result: any = await dependencyManager.getPreReqVersions();
                 should.not.exist(result.openssl.version);
+                totalmemStub.should.have.been.calledOnce;
             });
 
             it('should not get version of OpenSSL if installation path(s) not found', async () => {
                 mySandBox.stub(process, 'platform').value('win32');
 
-                existsStub.withArgs(`C:\\OpenSSL-Win32`).resolves(false);
                 existsStub.withArgs(`C:\\OpenSSL-Win64`).resolves(false);
 
                 const result: any = await dependencyManager.getPreReqVersions();
                 should.not.exist(result.openssl.version);
+                totalmemStub.should.have.been.calledOnce;
             });
 
             it('should not get version of OpenSSL if unexpected format is returned', async () => {
                 mySandBox.stub(process, 'platform').value('win32');
 
-                existsStub.withArgs(`C:\\OpenSSL-Win32`).resolves(true);
-                existsStub.withArgs(`C:\\OpenSSL-Win64`).resolves(false);
-                sendCommandStub.withArgs(`C:\\OpenSSL-Win32\\bin\\openssl.exe version`).resolves('OpenSSL version 1.2.3');
+                existsStub.withArgs(`C:\\OpenSSL-Win64`).resolves(true);
+                sendCommandStub.withArgs(`C:\\OpenSSL-Win64\\bin\\openssl.exe version`).resolves('OpenSSL version 1.2.3');
 
                 const result: any = await dependencyManager.getPreReqVersions();
                 should.not.exist(result.openssl.version);
+                totalmemStub.should.have.been.calledOnce;
             });
             it('should get version of Windows Build Tools', async () => {
                 mySandBox.stub(process, 'platform').value('win32');
@@ -2102,6 +2409,7 @@ describe('DependencyManager Tests', () => {
 
                 const result: any = await dependencyManager.getPreReqVersions();
                 result.buildTools.version.should.equal('5.2.2');
+                totalmemStub.should.have.been.calledOnce;
             });
 
             it('should not get version of Windows Build Tools if command not found', async () => {
@@ -2111,6 +2419,7 @@ describe('DependencyManager Tests', () => {
 
                 const result: any = await dependencyManager.getPreReqVersions();
                 should.not.exist(result.buildTools.version);
+                totalmemStub.should.have.been.calledOnce;
             });
 
             it('should not get version of Windows Build Tools if unexpected format is returned', async () => {
@@ -2120,6 +2429,7 @@ describe('DependencyManager Tests', () => {
 
                 const result: any = await dependencyManager.getPreReqVersions();
                 should.not.exist(result.buildTools.version);
+                totalmemStub.should.have.been.calledOnce;
             });
 
             it('should return true if user has agreed to Docker setup', async () => {
@@ -2128,13 +2438,13 @@ describe('DependencyManager Tests', () => {
                 const newExtensionData: ExtensionData = DEFAULT_EXTENSION_DATA;
                 newExtensionData.preReqPageShown = true;
                 newExtensionData.dockerForWindows = true;
-                newExtensionData.systemRequirements = false;
                 newExtensionData.version = currentExtensionVersion;
                 newExtensionData.generatorVersion = extDeps['generator-fabric'];
                 await GlobalState.update(newExtensionData);
 
                 const result: any = await dependencyManager.getPreReqVersions();
                 result.dockerForWindows.complete.should.equal(true);
+                totalmemStub.should.have.been.calledOnce;
             });
 
             it(`should return false if user hasn't agreed to Docker setup`, async () => {
@@ -2143,13 +2453,13 @@ describe('DependencyManager Tests', () => {
                 const newExtensionData: ExtensionData = DEFAULT_EXTENSION_DATA;
                 newExtensionData.preReqPageShown = true;
                 newExtensionData.dockerForWindows = false;
-                newExtensionData.systemRequirements = false;
                 newExtensionData.version = currentExtensionVersion;
                 newExtensionData.generatorVersion = extDeps['generator-fabric'];
                 await GlobalState.update(newExtensionData);
 
                 const result: any = await dependencyManager.getPreReqVersions();
                 result.dockerForWindows.complete.should.equal(false);
+                totalmemStub.should.have.been.calledOnce;
             });
 
             it('should only get non-local fabric versions for Windows', async () => {
@@ -2161,7 +2471,6 @@ describe('DependencyManager Tests', () => {
                 sendCommandStub.should.not.have.been.calledWith('docker -v');
                 sendCommandStub.should.not.have.been.calledWith('docker-compose -v');
                 sendCommandStub.should.not.have.been.calledWith('openssl version -v');
-                sendCommandStub.should.not.have.been.calledWith('npm ls -g windows-build-tools');
             });
 
         });
@@ -2176,6 +2485,7 @@ describe('DependencyManager Tests', () => {
 
                 const result: any = await dependencyManager.getPreReqVersions();
                 result.xcode.version.should.equal('2354');
+                totalmemStub.should.have.been.calledOnce;
             });
 
             it('should not get version of Xcode if command not found', async () => {
@@ -2185,6 +2495,32 @@ describe('DependencyManager Tests', () => {
 
                 const result: any = await dependencyManager.getPreReqVersions();
                 should.not.exist(result.xcode.version);
+                totalmemStub.should.have.been.calledOnce;
+            });
+
+            it('should continue to get version if Java path exists', async () => {
+                // Test for issue #1657 fix
+                mySandBox.stub(process, 'platform').value('darwin');
+                const pathExistsStub: sinon.SinonStub = mySandBox.stub(fs, 'pathExists').withArgs('/Library/Java/JavaVirtualMachines').resolves(true);
+                sendCommandStub.withArgs('java -version 2>&1').resolves('openjdk version "1.8.0_212"');
+
+                const result: any = await dependencyManager.getPreReqVersions();
+                pathExistsStub.should.have.been.calledOnce;
+                result.java.version.should.equal('1.8.0');
+                totalmemStub.should.have.been.calledOnce;
+            });
+
+            it('should not continue to get version if Java path doesnt exist', async () => {
+                // Test for issue #1657 fix
+                mySandBox.stub(process, 'platform').value('darwin');
+                const pathExistsStub: sinon.SinonStub = mySandBox.stub(fs, 'pathExists').withArgs('/Library/Java/JavaVirtualMachines').resolves(false);
+                sendCommandStub.withArgs('java -version 2>&1');
+
+                const result: any = await dependencyManager.getPreReqVersions();
+                pathExistsStub.should.have.been.calledOnce;
+                sendCommandStub.should.not.have.been.calledWith('java -version 2>&1');
+                should.not.exist(result.java.version);
+                totalmemStub.should.have.been.calledOnce;
             });
 
         });

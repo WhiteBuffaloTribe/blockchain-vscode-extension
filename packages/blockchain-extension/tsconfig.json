@@ -1,0 +1,22 @@
+{
+    "extends": "../../tsconfig",
+    "compilerOptions": {
+        "rootDir": ".",
+        "outDir": "build",
+        "types": []
+    },
+    "exclude": [
+        "node_modules",
+        ".vscode-test",
+        "cucumber/tmp",
+        "src",
+        "cypress",
+        "build",
+        "tutorials/*"
+    ],
+    "include": [
+        "extension",
+        "test",
+        "cucumber"
+    ]
+}

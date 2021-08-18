@@ -132,7 +132,7 @@ The 3 necessary steps to run a smart contract on a blockchain network are;
 This extension allows you to do all these steps in 1 or follow the package, install and instantiate in separate steps. We will use the 1 step method as this process is covered in depth in the Introductory series.
 
 1. Navigate to the `FABRIC ENVIRONMENTS` panel and select the network you created, so if you called it "newNetwork", select  `newNetwork o (click to start)` – this will start your local fabric environment. This may take a few minutes.
-2. Once you've received a notification saying "Connected to Local Fabric", click `+ Instantiate` under `Smart Contracts > Instantiated`.
+2. Once you've received a notification saying "Connected to newNetwork", click `+ Instantiate` under `Smart Contracts > Instantiated`.
 3. Firstly, you will be asked which peers you would like to instantiate the contract on, select both peers.
 4. Then, select the smart contract you wish to instantiate onto the peers. Select the `privateContract` (or whichever contract name you used in Step 1!).
 5. If you would like to call a function when instantiating, please enter it now, but this is not necessary for this tutorial – so feel free to press enter to move onto the next step.
@@ -155,7 +155,7 @@ In this step we will interact with the network as Org1 through a series of trans
 
 > **Note:** When following the instructions below, do the following if you wish to use the command palette, otherwise ignore this and just follow the instructions below this note.
 > 1. Enter `Submit Transaction` or `Evaluate Transaction` based on whether you intend to submit or evaluate a transaction.
-> 2. You will then be asked to choose a gateway to connect with, select your new network, so `newNetwork – Org 1`, if that's what you called it.
+> 2. You will then be asked to choose a gateway to connect with, select your new network, so `newNetwork > Org1`, if that's what you called it.
 > 3. Select the `org1Admin` identity when asked which identity to connect with.
 > 4. Choose your private data smart contract from the list of smart contracts.
 > 5. Finally, you will be asked which transaction to submit/evaluate. Select the relevant one. From here, the flow is the same as stated per instruction.
@@ -163,7 +163,7 @@ In this step we will interact with the network as Org1 through a series of trans
 
 Let's start transacting!
 
-1. Connect to `Org1` via the `newNetwork – Org1` gateway using the `admin` identity. To do this, select `newNetwork– Org1` under the `FABRIC GATEWAYS`and select `org1Admin`. Your Smart Contract should now be seen under `Channels > myChannel` in `FABRIC GATEWAYS`; if you select your smart contract then all the available transactions you can submit and evaluate will be there.
+1. Connect to `Org1` via the `newNetwork > Org1` gateway using the `admin` identity. To do this, select `newNetwork > Org1` under the `FABRIC GATEWAYS`and select `org1Admin`. Your Smart Contract should now be seen under `Channels > myChannel` in `FABRIC GATEWAYS`; if you select your smart contract then all the available transactions you can submit and evaluate will be there.
 
 > Note: The extension will ask you to select a peer-targeting policy for this transaction after you've specified the transient data. We will use the default option for every transaction we submit. This is only mentioned in the following step so you are able to see where it fits in, but make sure you select default for every transaction.
 
@@ -186,11 +186,17 @@ In this step we will interact with the network as Org2 through a series of trans
 
 1. Before connecting to the Org2 gateway, disconnect from Org1 by clicking the `disconnect` button on the top right of the gateways panel.
 
-2. Connect to Org2 the same way you connected to Org1 previously. Select `newNetwork – Org2` under `FABRIC GATEWAYS` and select `org2Admin`. Now navigate to the list of available transactions for Org2 under `FABRIC GATEWAYS > Channels > mychannel`. This list of transactions will be the same as for Org1.
+2. Connect to Org2 the same way you connected to Org1 previously. Select `newNetwork > Org2` under `FABRIC GATEWAYS` and select `org2Admin`. Now navigate to the list of available transactions for Org2 under `FABRIC GATEWAYS > Channels > mychannel`. This list of transactions will be the same as for Org1.
 
-3. Org2 is able to see that Org1 created an asset with the asset ID of 001. So let's see what happens when Org2 tries to read the transaction. As in step 4.3, evaluate a `readMyPrivateAsset` transaction using the argument `["001"]` and no transient data. This will throw an error into your notifications and in the output.
+3. Org2 is able to see that Org1 created an asset with the asset ID of 001. So let's see what happens when Org2 tries to read the transaction. As in step 5.3, evaluate a `readMyPrivateAsset` transaction using the argument `["001"]` and no transient data. This will throw an error into your notifications and in the output.
 
-You should now feel more comfortable with the differences between transacting as an organisation that has access to a private asset and one that doesn't. But what if Org2 wanted to check what Org1 had stored in their private data collection with the permission of Org1?
+4. What if Org2 wanted to create their own private asset? As in step 5.2, submit a `createMyPrivateAsset` transaction. As the asset ID 001 has already been used (when Org1 created their asset), enter `[002]` for the assetID. Enter `{"privateValue":"150"}` as the transient data, and choose default peer targeting. This transaction should then succeed with the output `[TIMESTAMP] [SUCCESS] No value returned from createMyPrivateAsset`.
+
+It's likely that you were expecting this transaction to fail. Org2 wasn't able to read from Org1's private data collection, so why should it be able to write to it? 
+
+Imagine that a transaction is sent to both Org1 and Org2 at the same time, in order to meet the endorsement policy. Both of the peers need write access to the same set of private data collections to achieve endorsement, otherwise there will be difference between the transactions signatures that Org1 and Org2 end up with. As such, Org2 is able to submit a `createMyPrivateAsset` transaction to Org1's private data collection without any issues.
+
+You should now feel more comfortable with the differences between transacting as an organisation that is a member of a private data collection and one that isn't. But what if Org2 wanted to check what Org1 had stored in their private data collection with the permission of Org1? 
 
 </details>
 
@@ -199,7 +205,7 @@ You should now feel more comfortable with the differences between transacting as
 <details>
 <summary><b>7. Using the verify transaction to check what is stored in a Private Data Collection</b></summary>
 
-So if Org2 was a regulatory body and wanted to make sure that Org1&#39;s private asset was legally sound; Org1 could tell Org2 what the original value of the asset was, and Org2 could run a verify transaction to confirm this. This is what we will do in this step; please remain connected to the Org2 Fabric Gateway. Before carrying out this step, let us give you a bit of information about the verify transaction. The function appears in the contract like this;
+So if Org2 was a regulatory body and wanted to make sure that Org1's private asset was legally sound; Org1 could tell Org2 what the original value of the asset was, and Org2 could run a verify transaction to confirm this. This is what we will do in this step; please remain connected to the Org2 Fabric Gateway. Before carrying out this step, let us give you a bit of information about the verify transaction. The function appears in the contract like this;
 
     @Transactions(false)
 

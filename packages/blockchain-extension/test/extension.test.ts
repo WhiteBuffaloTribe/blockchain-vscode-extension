@@ -160,7 +160,6 @@ describe('Extension Tests', () => {
             const extensionData: ExtensionData = DEFAULT_EXTENSION_DATA;
             extensionData.preReqPageShown = true;
             extensionData.dockerForWindows = true;
-            extensionData.systemRequirements = true;
             extensionData.version = currentExtensionVersion;
             extensionData.generatorVersion = dependencies['generator-fabric'];
             extensionData.createOneOrgLocalFabric = true;
@@ -211,7 +210,6 @@ describe('Extension Tests', () => {
             const extensionData: ExtensionData = DEFAULT_EXTENSION_DATA;
             extensionData.preReqPageShown = true;
             extensionData.dockerForWindows = true;
-            extensionData.systemRequirements = true;
             extensionData.migrationCheck = 2;
             extensionData.version = currentExtensionVersion;
             extensionData.generatorVersion = dependencies['generator-fabric'];
@@ -261,7 +259,6 @@ describe('Extension Tests', () => {
             const extensionData: ExtensionData = DEFAULT_EXTENSION_DATA;
             extensionData.preReqPageShown = false;
             extensionData.dockerForWindows = true;
-            extensionData.systemRequirements = true;
             extensionData.version = currentExtensionVersion;
             extensionData.generatorVersion = dependencies['generator-fabric'];
             extensionData.migrationCheck = 2;
@@ -311,7 +308,6 @@ describe('Extension Tests', () => {
             const extensionData: ExtensionData = DEFAULT_EXTENSION_DATA;
             extensionData.preReqPageShown = true;
             extensionData.dockerForWindows = true;
-            extensionData.systemRequirements = true;
             extensionData.version = currentExtensionVersion;
             extensionData.generatorVersion = dependencies['generator-fabric'];
             extensionData.migrationCheck = 2;
@@ -356,7 +352,6 @@ describe('Extension Tests', () => {
             const extensionData: ExtensionData = DEFAULT_EXTENSION_DATA;
             extensionData.preReqPageShown = true;
             extensionData.dockerForWindows = true;
-            extensionData.systemRequirements = true;
             extensionData.version = '1.0.6';
             extensionData.generatorVersion = dependencies['generator-fabric'];
             extensionData.migrationCheck = 2;
@@ -366,6 +361,58 @@ describe('Extension Tests', () => {
             await GlobalState.update(extensionData);
 
             await myExtension.activate(context);
+
+            sendTelemetryStub.should.have.been.calledWith('updatedInstall', { IBM: sinon.match.string });
+
+            logSpy.should.have.been.calledWith(LogType.IMPORTANT, undefined, 'Log files can be found by running the `Developer: Open Logs Folder` command from the palette', undefined, true);
+            logSpy.should.have.been.calledWith(LogType.INFO, undefined, 'Starting IBM Blockchain Platform Extension');
+
+            setExtensionContextStub.should.have.been.calledTwice;
+
+            hasPreReqsInstalledStub.should.have.been.calledOnce;
+            createTempCommandsStub.should.have.been.calledOnceWith(true);
+            setupCommandsStub.should.have.been.calledOnce;
+
+            hasPreReqsInstalledStub.should.have.been.calledOnce;
+            registerPreReqAndReleaseNotesCommandStub.should.have.been.calledOnce;
+
+            executeCommandStub.should.not.have.been.calledWith(ExtensionCommands.OPEN_PRE_REQ_PAGE);
+            executeCommandStub.should.have.been.calledWith('markdown.showPreview', releaseNotesUri);
+
+            completeActivationStub.should.have.been.calledOnce;
+        });
+
+        it('should set global state properties if a previous version has been used', async () => {
+            const releaseNotesPath: string = path.join(ExtensionUtil.getExtensionPath(), 'RELEASE-NOTES.md');
+            const releaseNotesUri: vscode.Uri = vscode.Uri.file(releaseNotesPath);
+            setupCommandsStub.resolves();
+            completeActivationStub.resolves();
+
+            const context: vscode.ExtensionContext = GlobalState.getExtensionContext();
+            setExtensionContextStub.returns(undefined);
+            const executeCommandStub: sinon.SinonStub = mySandBox.stub(vscode.commands, 'executeCommand');
+            executeCommandStub.callThrough();
+            executeCommandStub.withArgs('markdown.showPreview', releaseNotesUri).resolves();
+            hasPreReqsInstalledStub.resolves(true);
+            registerPreReqAndReleaseNotesCommandStub.resolves(context);
+            createTempCommandsStub.returns(undefined);
+
+            const extensionData: ExtensionData = DEFAULT_EXTENSION_DATA;
+            extensionData.preReqPageShown = true;
+            extensionData.dockerForWindows = true;
+            extensionData.version = '1.0.6';
+            extensionData.generatorVersion = dependencies['generator-fabric'];
+            extensionData.migrationCheck = 2;
+            extensionData.createOneOrgLocalFabric = undefined;
+            extensionData.deletedOneOrgLocalFabric = undefined;
+
+            await GlobalState.update(extensionData);
+
+            await myExtension.activate(context);
+
+            const newExtData: ExtensionData = GlobalState.get();
+            newExtData.createOneOrgLocalFabric.should.equal(true);
+            newExtData.deletedOneOrgLocalFabric.should.equal(false);
 
             sendTelemetryStub.should.have.been.calledWith('updatedInstall', { IBM: sinon.match.string });
 
@@ -403,14 +450,11 @@ describe('Extension Tests', () => {
             const extensionData: ExtensionData = DEFAULT_EXTENSION_DATA;
             extensionData.preReqPageShown = true;
             extensionData.dockerForWindows = true;
-            extensionData.systemRequirements = true;
             extensionData.version = null;
             extensionData.generatorVersion = null;
             extensionData.migrationCheck = 2;
             extensionData.createOneOrgLocalFabric = true;
             extensionData.deletedOneOrgLocalFabric = false;
-
-            await GlobalState.update(extensionData);
 
             await GlobalState.update(extensionData);
 
@@ -456,7 +500,6 @@ describe('Extension Tests', () => {
             const extensionData: ExtensionData = DEFAULT_EXTENSION_DATA;
             extensionData.preReqPageShown = true;
             extensionData.dockerForWindows = true;
-            extensionData.systemRequirements = true;
             extensionData.version = '1.0.6';
             extensionData.generatorVersion = dependencies['generator-fabric'];
             extensionData.migrationCheck = 2;
@@ -505,7 +548,6 @@ describe('Extension Tests', () => {
             const extensionData: ExtensionData = DEFAULT_EXTENSION_DATA;
             extensionData.preReqPageShown = true;
             extensionData.dockerForWindows = true;
-            extensionData.systemRequirements = true;
             extensionData.version = '1.0.6';
             extensionData.generatorVersion = dependencies['generator-fabric'];
             extensionData.migrationCheck = 2;
@@ -550,7 +592,6 @@ describe('Extension Tests', () => {
             const extensionData: ExtensionData = DEFAULT_EXTENSION_DATA;
             extensionData.preReqPageShown = true;
             extensionData.dockerForWindows = true;
-            extensionData.systemRequirements = true;
             extensionData.version = null;
             extensionData.generatorVersion = null;
             extensionData.migrationCheck = 2;
@@ -585,7 +626,6 @@ describe('Extension Tests', () => {
             const extensionData: ExtensionData = DEFAULT_EXTENSION_DATA;
             extensionData.preReqPageShown = true;
             extensionData.dockerForWindows = true;
-            extensionData.systemRequirements = true;
             extensionData.version = currentExtensionVersion;
             extensionData.generatorVersion = '1.0.6';
             extensionData.migrationCheck = 2;
@@ -604,6 +644,7 @@ describe('Extension Tests', () => {
 
             hasPreReqsInstalledStub.should.have.been.called;
             failedActivationWindowStub.should.have.been.calledOnceWithExactly('some error');
+            sendTelemetryStub.should.have.been.calledWith('activationFailed', { activationError: 'some error' });
             logSpy.should.have.been.calledWith(LogType.ERROR, undefined, `Failed to activate extension: ${error.toString()}`, error.stack);
         });
 
@@ -625,7 +666,6 @@ describe('Extension Tests', () => {
             const extensionData: ExtensionData = DEFAULT_EXTENSION_DATA;
             extensionData.preReqPageShown = true;
             extensionData.dockerForWindows = true;
-            extensionData.systemRequirements = true;
             extensionData.version = currentExtensionVersion;
             extensionData.migrationCheck = 0;
             extensionData.generatorVersion = dependencies['generator-fabric'];
@@ -667,7 +707,6 @@ describe('Extension Tests', () => {
             const extensionData: ExtensionData = DEFAULT_EXTENSION_DATA;
             extensionData.preReqPageShown = true;
             extensionData.dockerForWindows = true;
-            extensionData.systemRequirements = true;
             extensionData.version = '1.0.6';
             extensionData.generatorVersion = dependencies['generator-fabric'];
             extensionData.migrationCheck = 2;
@@ -689,7 +728,7 @@ describe('Extension Tests', () => {
 
             const newContext: vscode.ExtensionContext = GlobalState.getExtensionContext();
             const homePageButton: any = newContext.subscriptions.find((subscription: any) => {
-                return subscription.text === 'Blockchain home';
+                return subscription.text === 'Blockchain Home';
             });
             homePageButton.tooltip.should.equal('View Homepage');
             homePageButton.command.should.equal(ExtensionCommands.OPEN_HOME_PAGE);

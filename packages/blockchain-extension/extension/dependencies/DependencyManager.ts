@@ -24,6 +24,7 @@ import { CommandUtil } from '../util/CommandUtil';
 import { GlobalState, ExtensionData } from '../util/GlobalState';
 import { Dependencies } from './Dependencies';
 import { LogType } from 'ibm-blockchain-platform-common';
+import OS = require('os');
 
 export class DependencyManager {
 
@@ -84,7 +85,7 @@ export class DependencyManager {
             } else {
                 return false;
             }
-        } else if (name === 'C++ Build Tools' || name === 'Xcode' || name === 'Go Extension' || name === 'Java Language Support Extension' || name === 'Java Debugger Extension' || name === 'Java Test Runner Extension') {
+        } else if (name === 'C++ Build Tools' || name === 'Xcode' || name === 'Go Extension' || name === 'Java Language Support Extension' || name === 'Java Debugger Extension' || name === 'Java Test Runner Extension' || name === 'Node Test Runner Extension' || name === 'IBM Cloud Account Extension') {
             if (dependency.version) {
                 return true;
             } else {
@@ -175,6 +176,13 @@ export class DependencyManager {
                 return false;
             }
 
+            if (!this.isValidDependency(dependencies.nodeTestRunnerExtension)) {
+                return false;
+            }
+
+            if (!this.isValidDependency(dependencies.ibmCloudAccountExtension)) {
+                return false;
+            }
         }
 
         return true;
@@ -191,8 +199,8 @@ export class DependencyManager {
         // So we want to handle the optional dependencies last
 
         const dependencies: any = {
-            node: { name: 'Node.js', required: true, version: undefined, url: 'https://nodejs.org/en/download/', requiredVersion: Dependencies.NODEJS_REQUIRED, requiredLabel: 'only', tooltip: 'Required for developing JavaScript and TypeScript smart contracts. If installing Node and npm using a manager such as \'nvm\' or \'nodenv\', you will need to set the default/global version and restart VS Code for the version to be detected by the Prerequisites page.' },
-            npm: { name: 'npm', required: true, version: undefined, url: 'https://nodejs.org/en/download/', requiredVersion: Dependencies.NPM_REQUIRED, requiredLabel: '', tooltip: 'Required for installing JavaScript and TypeScript smart contract dependencies. If installing Node and npm using a manager such as \'nvm\' or \'nodenv\', you will need to set the default/global version and restart VS Code for the version to be detected by the Prerequisites page.' },
+            node: { name: 'Node.js', required: true, version: undefined, url: 'https://nodejs.org/en/download/releases', requiredVersion: Dependencies.NODEJS_REQUIRED, requiredLabel: 'only', tooltip: 'Required for developing JavaScript and TypeScript smart contracts. If installing Node and npm using a manager such as \'nvm\' or \'nodenv\', you will need to set the default/global version and restart VS Code for the version to be detected by the Prerequisites page.' },
+            npm: { name: 'npm', required: true, version: undefined, url: 'https://nodejs.org/en/download/releases', requiredVersion: Dependencies.NPM_REQUIRED, requiredLabel: '', tooltip: 'Required for installing JavaScript and TypeScript smart contract dependencies. If installing Node and npm using a manager such as \'nvm\' or \'nodenv\', you will need to set the default/global version and restart VS Code for the version to be detected by the Prerequisites page.' },
         };
 
         // Node
@@ -238,31 +246,40 @@ export class DependencyManager {
             if (composeVersion) {
                 dependencies.dockerCompose.version = composeVersion;
             }
-
-            dependencies.systemRequirements = { name: 'System Requirements', id: 'systemRequirements', complete: undefined, checkbox: true, required: true, text: 'In order to support the local runtime, please confirm your system has at least 4GB of RAM' };
-
-            if (!extensionData.systemRequirements) {
-                dependencies.systemRequirements.complete = false;
-            } else {
+            dependencies.systemRequirements = { name: 'System Requirements', id: 'systemRequirements', complete: undefined, checkbox: false, required: true, text: 'In order to support the local runtime, please confirm your system has at least 4GB of RAM' };
+            dependencies.systemRequirements.version = OS.totalmem() / 1073741824;
+            if (dependencies.systemRequirements.version >= 4) {
                 dependencies.systemRequirements.complete = true;
+            } else {
+                dependencies.systemRequirements.complete = false;
             }
 
         }
 
         if (process.platform === 'win32') {
             // Windows
+            dependencies.buildTools = { name: 'C++ Build Tools', required: true, version: undefined, url: 'https://github.com/felixrieseberg/windows-build-tools#windows-build-tools', requiredVersion: undefined, requiredLabel: undefined };
+            try {
+                const buildToolsResult: string = await CommandUtil.sendCommand('npm ls -g windows-build-tools');
+                if (this.isCommandFound(buildToolsResult)) {
+                    const buildToolsMatchedVersion: string = buildToolsResult.match(/windows-build-tools@(\S*)/)[1]; // Format: X.Y.Z
+                    const buildToolsVersion: string = semver.valid(buildToolsMatchedVersion); // Returns version
+                    if (buildToolsVersion) {
+                        dependencies.buildTools.version = buildToolsVersion;
+                    }
+                }
+            } catch (error) {
+                // Ignore
+            }
 
             if (localFabricEnabled) {
                 dependencies.dockerForWindows = { name: 'Docker for Windows', id: 'dockerForWindows', complete: undefined, checkbox: true, required: true, text: 'Docker for Windows must be configured to use Linux containers (this is the default)' };
 
-                dependencies.openssl = { name: 'OpenSSL', required: true, version: undefined, url: 'http://slproweb.com/products/Win32OpenSSL.html', requiredVersion: Dependencies.OPENSSL_REQUIRED, requiredLabel: 'for Node 8.x and Node 10.x respectively' };
-                dependencies.buildTools = { name: 'C++ Build Tools', required: true, version: undefined, url: 'https://github.com/felixrieseberg/windows-build-tools#windows-build-tools', requiredVersion: undefined, requiredLabel: undefined };
+                dependencies.openssl = { name: 'OpenSSL', required: true, version: undefined, url: 'https://www.openssl.org/community/binaries.html', requiredVersion: Dependencies.OPENSSL_REQUIRED, requiredLabel: 'only', tooltip: 'Install the Win64 version into `C:\\OpenSSL-Win64` on 64-bit systems`.' };
                 try {
-                    const win32: boolean = await fs.pathExists(`C:\\OpenSSL-Win32`);
                     const win64: boolean = await fs.pathExists(`C:\\OpenSSL-Win64`);
-                    if (win32 || win64) {
-                        const arch: string = (win32) ? '32' : '64';
-                        const binPath: string = path.win32.join(`C:\\OpenSSL-Win${arch}`, 'bin', 'openssl.exe');
+                    if (win64) {
+                        const binPath: string = path.win32.join('C:\\OpenSSL-Win64', 'bin', 'openssl.exe');
                         const opensslResult: string = await CommandUtil.sendCommand(`${binPath} version`); // Format: OpenSSL 1.0.2k  26 Jan 2017
                         if (this.isCommandFound(opensslResult)) {
                             const opensslMatchedVersion: string = opensslResult.match(/OpenSSL (\S*)/)[1]; // Format: 1.0.2k
@@ -271,19 +288,6 @@ export class DependencyManager {
                             if (opensslVersion) {
                                 dependencies.openssl.version = opensslVersion;
                             }
-                        }
-                    }
-                } catch (error) {
-                    // Ignore
-                }
-
-                try {
-                    const buildToolsResult: string = await CommandUtil.sendCommand('npm ls -g windows-build-tools');
-                    if (this.isCommandFound(buildToolsResult)) {
-                        const buildToolsMatchedVersion: string = buildToolsResult.match(/windows-build-tools@(\S*)/)[1]; // Format: X.Y.Z
-                        const buildToolsVersion: string = semver.valid(buildToolsMatchedVersion); // Returns version
-                        if (buildToolsVersion) {
-                            dependencies.buildTools.version = buildToolsVersion;
                         }
                     }
                 } catch (error) {
@@ -335,7 +339,7 @@ export class DependencyManager {
         }
 
         // Go Extension
-        dependencies.goExtension = { name: 'Go Extension', required: false, version: undefined, url: 'vscode:extension/ms-vscode.Go', requiredVersion: '', requiredLabel: '', tooltip: 'Provides language support for Go.' };
+        dependencies.goExtension = { name: 'Go Extension', required: false, version: undefined, url: 'https://github.com/microsoft/vscode-go/releases', requiredVersion: '', requiredLabel: '', tooltip: 'Provides language support for Go.' };
         try {
             const goExtensionResult: vscode.Extension<any> = vscode.extensions.getExtension('ms-vscode.Go');
             if (goExtensionResult) {
@@ -349,14 +353,25 @@ export class DependencyManager {
         // Java
         dependencies.java = { name: 'Java OpenJDK 8', required: false, version: undefined, url: 'https://adoptopenjdk.net/?variant=openjdk8', requiredVersion: Dependencies.JAVA_REQUIRED, requiredLabel: 'only', tooltip: 'Required for developing Java smart contracts.' };
         try {
-            // For some reason, the response is going to stderr, so we have to redirect it to stdout.
-            const javaResult: string = await CommandUtil.sendCommand('java -version 2>&1'); // Format: openjdk|java version "1.8.0_212"
-            if (this.isCommandFound(javaResult)) {
-                const javaMatchedVersion: string = javaResult.match(/(openjdk|java) version "(.*)"/)[2]; // Format: X.Y.Z_A
-                const javaVersionCoerced: semver.SemVer = semver.coerce(javaMatchedVersion); // Format: X.Y.Z
-                const javaVersion: string = semver.valid(javaVersionCoerced); // Returns version
-                if (javaVersion) {
-                    dependencies.java.version = javaVersion;
+
+            let getVersion: boolean = true;
+
+            if (process.platform === 'darwin') {
+                const javaPath: string = '/Library/Java/JavaVirtualMachines'; // This is the standard Mac install location.
+                const javaDirExists: boolean = await fs.pathExists(javaPath);
+                getVersion = javaDirExists;
+            }
+
+            if (getVersion) {
+                // For some reason, the response is going to stderr, so we have to redirect it to stdout.
+                const javaResult: string = await CommandUtil.sendCommand('java -version 2>&1'); // Format: openjdk|java version "1.8.0_212"
+                if (this.isCommandFound(javaResult)) {
+                    const javaMatchedVersion: string = javaResult.match(/(openjdk|java) version "(.*)"/)[2]; // Format: X.Y.Z_A
+                    const javaVersionCoerced: semver.SemVer = semver.coerce(javaMatchedVersion); // Format: X.Y.Z
+                    const javaVersion: string = semver.valid(javaVersionCoerced); // Returns version
+                    if (javaVersion) {
+                        dependencies.java.version = javaVersion;
+                    }
                 }
             }
         } catch (error) {
@@ -387,13 +402,36 @@ export class DependencyManager {
             // Ignore the error
         }
 
-        // Java Debugger Extension
+        // Java Test Runner Extension
         dependencies.javaTestRunnerExtension = { name: 'Java Test Runner Extension', required: false, version: undefined, url: 'vscode:extension/vscjava.vscode-java-test', requiredVersion: undefined, requiredLabel: '', tooltip: 'Used for running Java smart contract functional tests.' };
         try {
             const javaTestRunnerExtensionResult: vscode.Extension<any> = vscode.extensions.getExtension('vscjava.vscode-java-test');
             if (javaTestRunnerExtensionResult) {
                 const version: string = javaTestRunnerExtensionResult.packageJSON.version;
                 dependencies.javaTestRunnerExtension.version = version;
+            }
+        } catch (error) {
+            // Ignore the error
+        }
+
+        // Node Test Runner Extension
+        dependencies.nodeTestRunnerExtension = { name: 'Node Test Runner Extension', required: false, version: undefined, url: 'vscode:extension/oshri6688.javascript-test-runner', requiredVersion: undefined, requiredLabel: '', tooltip: 'Used for running Node smart contract functional tests.' };
+        try {
+            const nodeTestRunnerExtensionResult: vscode.Extension<any> = vscode.extensions.getExtension('oshri6688.javascript-test-runner');
+            if (nodeTestRunnerExtensionResult) {
+                const version: string = nodeTestRunnerExtensionResult.packageJSON.version;
+                dependencies.nodeTestRunnerExtension.version = version;
+            }
+        } catch (error) {
+            // Ignore the error
+        }
+
+        dependencies.ibmCloudAccountExtension = { name: 'IBM Cloud Account Extension', required: false, version: undefined, url: 'vscode:extension/IBM.ibmcloud-account', requiredVersion: undefined, requiredLabel: '', tooltip: 'Required for discovering IBM Blockchain Platform on IBM Cloud networks.' };
+        try {
+            const ibmCloudAccountExtensionResult: vscode.Extension<any> = vscode.extensions.getExtension('IBM.ibmcloud-account');
+            if (ibmCloudAccountExtensionResult) {
+                const version: string = ibmCloudAccountExtensionResult.packageJSON.version;
+                dependencies.ibmCloudAccountExtension.version = version;
             }
         } catch (error) {
             // Ignore the error
@@ -498,8 +536,9 @@ export class DependencyManager {
             let info: { modules?: string, longVersion: string, shortVersion?: string };
 
             const remote: boolean = vscode.extensions.getExtension(EXTENSION_ID).extensionKind === vscode.ExtensionKind.Workspace;
+            const che: boolean = ExtensionUtil.isChe();
 
-            if (remote) {
+            if (remote || che) {
                 runtime = 'node';
                 const nodeVersion: string = process.versions.node;
                 info = {
@@ -583,8 +622,18 @@ export class DependencyManager {
 
             if (!electronVersion) {
 
-                const response: any = await Axios.get('https://raw.githubusercontent.com/electron/releases/master/lite.json');
-                let info: any[] = response.data;
+                let info: any[] = [];
+                try {
+                    const response: any = await Axios.get('https://raw.githubusercontent.com/electron/releases/master/lite.json');
+                    info = response.data;
+                } catch (error) {
+                    // Will be handled by reading a local JSON file, on the next few lines.
+                }
+
+                if (!info || info.length === 0) {
+                    const fallbackPath: string = path.join(__dirname, '..', '..', 'fallback-build-info.json');
+                    info = await fs.readJSON(fallbackPath);
+                }
 
                 info = info.filter((_info: any) => {
                     return _info && _info.deps && _info.deps.modules === modules;
@@ -606,7 +655,7 @@ export class DependencyManager {
 
                 for (const _version of filteredVersions) {
                     try {
-                        const preBuiltBinarypath: string = `https://node-precompiled-binaries.grpc.io/grpc/v1.23.3/electron-v${_version.shortVersion}-${os}-${arch}-${thing}.tar.gz`;
+                        const preBuiltBinarypath: string = `https://node-precompiled-binaries.grpc.io/grpc/v1.24.2/electron-v${_version.shortVersion}-${os}-${arch}-${thing}.tar.gz`;
                         await Axios.get(preBuiltBinarypath);
                         // found one that exists so use it
                         version = _version;
@@ -629,7 +678,7 @@ export class DependencyManager {
 
             return { modules: modules, longVersion: version.longVersion, shortVersion: version.shortVersion };
         } catch (error) {
-            throw new Error(`Could not get electron verion, ${error.message}`);
+            throw new Error(`Could not get electron version, ${error.message}`);
         }
     }
 

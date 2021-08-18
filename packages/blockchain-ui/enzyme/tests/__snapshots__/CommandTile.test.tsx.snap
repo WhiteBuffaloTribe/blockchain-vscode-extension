@@ -1,0 +1,24 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`CommandTile component should render the expected snapshot 1`] = `
+<div
+  className="bx--tile custom-tile"
+  onClick={[Function]}
+>
+  <div
+    className="heading-combo-container"
+  >
+    <h3>
+      My Tile
+    </h3>
+    <p>
+      Some text I want to display in my tile
+    </p>
+  </div>
+  <img
+    alt=""
+    className="new-tab-img"
+    src="test-file-stub"
+  />
+</div>
+`;

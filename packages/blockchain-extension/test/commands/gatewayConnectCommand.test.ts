@@ -82,6 +82,7 @@ describe('GatewayConnectCommand', () => {
 
             mockConnection = mySandBox.createStubInstance(FabricGatewayConnection);
             mockConnection.connect.resolves();
+            mockConnection.createChannelMap.resolves({channelMap: new Map(), v2channels: []});
             mockConnection.isIBPConnection.returns(false);
 
             mySandBox.stub(FabricConnectionFactory, 'createFabricGatewayConnection').returns(mockConnection);
@@ -272,8 +273,8 @@ describe('GatewayConnectCommand', () => {
             it('should test that a fabric gateway with a single identity can be connected to from the tree', async () => {
                 const blockchainGatewayExplorerProvider: BlockchainGatewayExplorerProvider = ExtensionUtil.getBlockchainGatewayExplorerProvider();
                 const allChildren: Array<BlockchainTreeItem> = await blockchainGatewayExplorerProvider.getChildren();
-
-                const myConnectionItem: GatewayDissociatedTreeItem = allChildren[1] as GatewayDissociatedTreeItem;
+                const groupChildren: Array<BlockchainTreeItem> = await blockchainGatewayExplorerProvider.getChildren(allChildren[1]);
+                const myConnectionItem: GatewayDissociatedTreeItem = groupChildren[0] as GatewayDissociatedTreeItem;
 
                 const connectStub: sinon.SinonStub = mySandBox.stub(ExtensionUtil.getBlockchainGatewayExplorerProvider(), 'connect');
 
@@ -288,10 +289,11 @@ describe('GatewayConnectCommand', () => {
             it('should test that a fabric gateway with multiple identities can be connected to from the tree', async () => {
                 const blockchainGatewayExplorerProvider: BlockchainGatewayExplorerProvider = ExtensionUtil.getBlockchainGatewayExplorerProvider();
                 const allChildren: Array<BlockchainTreeItem> = await blockchainGatewayExplorerProvider.getChildren();
+                const groupChildren: Array<BlockchainTreeItem> = await blockchainGatewayExplorerProvider.getChildren(allChildren[1]);
                 chosenWalletQuickPick.resolves({ label: connectionMultipleWallet.name, data: connectionMultipleWallet });
                 choseIdentityQuickPick.resolves(FabricRuntimeUtil.ADMIN_USER);
 
-                const myConnectionItem: GatewayDissociatedTreeItem = allChildren[2] as GatewayDissociatedTreeItem;
+                const myConnectionItem: GatewayDissociatedTreeItem = groupChildren[1] as GatewayDissociatedTreeItem;
 
                 const connectStub: sinon.SinonStub = mySandBox.stub(ExtensionUtil.getBlockchainGatewayExplorerProvider(), 'connect');
 
@@ -330,6 +332,21 @@ describe('GatewayConnectCommand', () => {
                 logSpy.getCall(0).should.have.been.calledWith(LogType.INFO, undefined, `connect`);
                 logSpy.getCall(1).should.have.been.calledWith(LogType.ERROR, `${error.message}`, `${error.toString()}`);
                 sendTelemetryEventStub.should.not.have.been.called;
+            });
+
+            it('should test a fabric gateway can be connected to from the command and user informed if some channels are not v1_4', async () => {
+                const connectStub: sinon.SinonStub = mySandBox.stub(ExtensionUtil.getBlockchainGatewayExplorerProvider(), 'connect');
+                mockConnection.createChannelMap.resolves({channelMap: new Map(), v2channels: ['channel1']});
+                const gatewayName: string = connectionSingle.name;
+                await vscode.commands.executeCommand(ExtensionCommands.CONNECT_TO_GATEWAY);
+
+                connectStub.should.have.been.calledOnce;
+                choseIdentityQuickPick.should.not.have.been.called;
+                mockConnection.connect.should.have.been.calledOnceWithExactly(sinon.match.instanceOf(FabricWallet), identity.label, timeout);
+                sendTelemetryEventStub.should.have.been.calledOnceWithExactly('connectCommand', { runtimeData: 'user runtime', connectIBM: sinon.match.string });
+                logSpy.getCall(0).should.have.been.calledWith(LogType.INFO, undefined, `connect`);
+                logSpy.getCall(1).should.have.been.calledWith(LogType.WARNING, 'Detected channels without V1_4 capabilities enabled: channel1.');
+                logSpy.getCall(2).should.have.been.calledWith(LogType.SUCCESS, `Connecting to ${gatewayName}`);
             });
         });
 
@@ -379,11 +396,12 @@ describe('GatewayConnectCommand', () => {
                 sendTelemetryEventStub.should.have.been.calledOnceWithExactly('connectCommand', { runtimeData: 'managed runtime', connectIBM: sinon.match.string });
             });
 
-            it('should connect to a managed runtime from the tree', async () => {
+            it('should connect to a managed runtime gateway from the tree', async () => {
 
                 const blockchainNetworkExplorerProvider: BlockchainGatewayExplorerProvider = ExtensionUtil.getBlockchainGatewayExplorerProvider();
                 const allChildren: Array<BlockchainTreeItem> = await blockchainNetworkExplorerProvider.getChildren();
-                const myConnectionItem: LocalGatewayTreeItem = allChildren[0] as LocalGatewayTreeItem;
+                const groupChildren: Array<BlockchainTreeItem> = await blockchainNetworkExplorerProvider.getChildren(allChildren[0]);
+                const myConnectionItem: LocalGatewayTreeItem = groupChildren[0] as LocalGatewayTreeItem;
 
                 await vscode.commands.executeCommand(myConnectionItem.command.command, ...myConnectionItem.command.arguments);
 
@@ -395,10 +413,10 @@ describe('GatewayConnectCommand', () => {
 
             it('should connect to a managed ansible', async () => {
                 managedGateway = new FabricGatewayRegistryEntry({
-                    name: 'myGatewayD',
+                    name: 'managedEnvironment - Org1',
                     associatedWallet: 'myGatewayDWallet',
                     fromEnvironment: 'managedEnvironment',
-                    displayName: 'managedEnvironment - Org1'
+                    displayName: 'Org1'
                 });
 
                 await FabricGatewayRegistry.instance().add(managedGateway);
@@ -420,7 +438,8 @@ describe('GatewayConnectCommand', () => {
 
                 const blockchainNetworkExplorerProvider: BlockchainGatewayExplorerProvider = ExtensionUtil.getBlockchainGatewayExplorerProvider();
                 const allChildren: Array<BlockchainTreeItem> = await blockchainNetworkExplorerProvider.getChildren();
-                const myConnectionItem: LocalGatewayTreeItem = allChildren[1] as LocalGatewayTreeItem;
+                const groupChildren: Array<BlockchainTreeItem> = await blockchainNetworkExplorerProvider.getChildren(allChildren[1]);
+                const myConnectionItem: LocalGatewayTreeItem = groupChildren[0] as LocalGatewayTreeItem;
 
                 await vscode.commands.executeCommand(myConnectionItem.command.command, ...myConnectionItem.command.arguments);
 
@@ -505,7 +524,8 @@ describe('GatewayConnectCommand', () => {
                 getIdentitiesStub.resolves([identity.label]);
                 const blockchainNetworkExplorerProvider: BlockchainGatewayExplorerProvider = ExtensionUtil.getBlockchainGatewayExplorerProvider();
                 const allChildren: Array<BlockchainTreeItem> = await blockchainNetworkExplorerProvider.getChildren();
-                const myConnectionItem: GatewayAssociatedTreeItem = allChildren[2] as GatewayAssociatedTreeItem;
+                const groupChildren: Array<BlockchainTreeItem> = await blockchainNetworkExplorerProvider.getChildren(allChildren[1]);
+                const myConnectionItem: GatewayAssociatedTreeItem = groupChildren[1] as GatewayAssociatedTreeItem;
 
                 await vscode.commands.executeCommand(myConnectionItem.command.command, ...myConnectionItem.command.arguments);
 

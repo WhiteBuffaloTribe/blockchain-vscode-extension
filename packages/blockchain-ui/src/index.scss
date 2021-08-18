@@ -16,8 +16,42 @@ html {
 
             #root {
                 // Color will default to #000000 otherwise
-                color: $text-01;        
+                color: $text-01;
                 @include select-dark;
+            }
+
+            #app-container {
+                @include app__tutorial-page-dark;
+            }
+
+            // CustomTile component
+            #tutorial-tile-container {
+                @include custom-tile-dark;
+            }
+
+            // extension version tag
+            #extension-version-tag {
+                background-color: $gray-80;
+                color: inherit;
+            }
+
+            // home page links
+            #home-link-01, #home-link-02, #home-link-03, #home-link-04, #home-link-05, #home-link-06, #home-link-07, #home-link-08, #home-link-09, #home-link-10, #home-link-11, #acclaim-link, #download-all-link {
+                color: $blue-40;
+            }
+
+            // home page image
+            #dev-learner-themed-image {
+                @include themed-image-dark;
+            }
+
+            #tutorial-page-background {
+                @include tutorial-page-dark;
+            }
+
+            #tutorial-tabs-container {
+                @include tutorial-tabs-dark;
+                @include tutorial-tile-dark;
             }
 
             // text inputs on the create transaction screen
@@ -42,6 +76,7 @@ html {
             #output-panel {
                 @include output-panel-dark;
             }
+
         }
     }
 
@@ -50,6 +85,11 @@ html {
             
             #root {
                 color: $text-01;
+            }
+
+            // home page image
+            #dev-learner-themed-image {
+                @include themed-image-light;
             }
         }
     }

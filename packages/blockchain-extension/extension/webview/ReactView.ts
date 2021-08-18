@@ -36,15 +36,17 @@ export abstract class ReactView extends View {
         const mainScript: string = manifest.files['main.js'];
         const mainStyle: string = manifest.files['main.css'];
 
-        const scriptPathOnDisk: {scheme: string, authority: string, path: string} = vscode.Uri.file(
+        const scriptPathOnDisk: vscode.Uri = vscode.Uri.file(
             path.join(this._extensionPath, 'build', mainScript)
           );
-        const scriptContents: Buffer = fs.readFileSync(scriptPathOnDisk.path);
+        const scriptContents: Buffer = fs.readFileSync(scriptPathOnDisk.fsPath);
 
-        const stylePathOnDisk: {scheme: string, authority: string, path: string} = vscode.Uri.file(
+        const stylePathOnDisk: vscode.Uri = vscode.Uri.file(
             path.join(this._extensionPath, 'build', mainStyle)
           );
-        const styleContents: Buffer = fs.readFileSync(stylePathOnDisk.path);
+        const styleContents: Buffer = fs.readFileSync(stylePathOnDisk.fsPath);
+
+        const actualExtensionPath: string = ExtensionUtil.getExtensionPath();
 
         return `<!DOCTYPE html>
                   <html lang="en">
@@ -55,9 +57,7 @@ export abstract class ReactView extends View {
                       <title>React</title>
                       <style>${styleContents.toString()}</style>
                       <meta img-src vscode-resource: https: ;style-src vscode-resource: 'unsafe-inline' http: https: data:;">
-                      <base href="${vscode.Uri.file(path.join(this._extensionPath, 'build')).with({
-                scheme: 'vscode-resource'
-              })}/">
+                      <base href="${vscode.Uri.file(path.join(actualExtensionPath, 'build')).with({ scheme: 'vscode-resource' })}/">
               <script>
                 const vscode = acquireVsCodeApi();
               </script>

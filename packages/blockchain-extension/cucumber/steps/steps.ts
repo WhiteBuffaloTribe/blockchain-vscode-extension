@@ -35,7 +35,7 @@ export enum LanguageType {
 
 module.exports = function(): any {
 
-    this.Then(/^there (should|shouldn't) be an? (environment connected |installed smart contract |instantiated smart contract |Channels |Node |Organizations |identity )?tree item with a label '(.*?)' in the '(Smart Contracts|Fabric Environments|Fabric Gateways|Fabric Wallets)' panel( for item)?( .*)?$/, this.timeout, async (shouldOrshouldnt: string, child: string, label: string, panel: string, thing2: string, thing: string) => {
+    this.Then(/^there (should|shouldn't) be an? (environment connected |installed smart contract |instantiated smart contract |Channels |Node |Organizations |identity )?tree item with a label '(.*?)' in the '(Smart Contracts|Fabric Environments|Fabric Gateways|Fabric Wallets)' panel( for item| for the current tree item)?( .*)?$/, this.timeout, async (shouldOrshouldnt: string, child: string, label: string, panel: string, thing2: string, thing: string) => {
         let treeItems: any[];
         if (panel === 'Smart Contracts') {
             const blockchainPackageExplorerProvider: BlockchainPackageExplorerProvider = ExtensionUtil.getBlockchainPackageExplorerProvider();
@@ -74,7 +74,9 @@ module.exports = function(): any {
         } else if (panel === 'Fabric Wallets') {
             const blockchainWalletExplorerProvider: BlockchainWalletExplorerProvider = ExtensionUtil.getBlockchainWalletExplorerProvider();
             treeItems = await blockchainWalletExplorerProvider.getChildren();
-            if (child && child.includes('identity') && thing && thing2) {
+            if (thing2 && thing2.includes('for the current tree item')) {
+                treeItems = await blockchainWalletExplorerProvider.getChildren(this.treeItem);
+            } else if (child && child.includes('identity') && thing && thing2) {
                 const walletIndex: number = treeItems.findIndex((item: any) => {
                     return item.label === thing.trim();
                 });
@@ -99,12 +101,53 @@ module.exports = function(): any {
         }
     });
 
+    this.Then(/^the '(Smart Contracts|Fabric Environments|Fabric Gateways|Fabric Wallets)' tree item should have a child '(.*)'$/, this.timeout, async (panel: string, childName: string) => {
+        let children: any;
+        if (panel === 'Fabric Wallets') {
+            const blockchainWalletExplorerProvider: BlockchainWalletExplorerProvider = ExtensionUtil.getBlockchainWalletExplorerProvider();
+            const allTreeItems: any[] = await blockchainWalletExplorerProvider.getChildren();
+            const parent: any = allTreeItems.find((item: any) => {
+                return item.label === this.treeItem.label;
+            });
+
+            children = await blockchainWalletExplorerProvider.getChildren(parent);
+
+        } else if (panel === 'Fabric Gateways') {
+            const blockchainGatewayExplorerProvider: BlockchainGatewayExplorerProvider = ExtensionUtil.getBlockchainGatewayExplorerProvider();
+            const allTreeItems: any[] = await blockchainGatewayExplorerProvider.getChildren();
+            const parent: any = allTreeItems.find((item: any) => {
+                return item.label === this.treeItem.label;
+            });
+
+            children = await blockchainGatewayExplorerProvider.getChildren(parent);
+
+        } else if (panel === 'Fabric Environments') {
+            const blockchainEnvironmentExplorerProvider: BlockchainEnvironmentExplorerProvider = ExtensionUtil.getBlockchainEnvironmentExplorerProvider();
+            const allTreeItems: any[] = await blockchainEnvironmentExplorerProvider.getChildren();
+            const parent: any = allTreeItems.find((item: any) => {
+                return item.label === this.treeItem.label;
+            });
+
+            children = await blockchainEnvironmentExplorerProvider.getChildren(parent);
+        }
+
+        // Expand on this 'if' statement when required!
+
+        // Set this.treeItem to be the child in question
+        this.treeItem = children.find((child: any) => {
+            return child.label === childName;
+        });
+    });
+
     this.Then(/the tree item should have a tooltip equal to '(.*)'/, this.timeout, async (tooltipValue: string) => {
         tooltipValue = tooltipValue.replace(/\\n/g, `\n`); // Add line breaks
         this.treeItem.tooltip.should.equal(tooltipValue);
     });
 
     this.Then("the logger should have been called with '{string}', '{string}' and '{string}'", this.timeout, async (type: string, popupMessage: string, outputMessage: string) => {
+        if (popupMessage === 'undefined') {
+            popupMessage = undefined;
+        }
         this.userInputUtilHelper.logSpy.should.have.been.calledWith(type, popupMessage, outputMessage);
     });
 

@@ -32,8 +32,15 @@ export class SettingConfigurations {
     static readonly EXTENSION_DIRECTORY: string = 'ibm-blockchain-platform.ext.directory';
     static readonly EXTENSION_BYPASS_PREREQS: string = 'ibm-blockchain-platform.ext.bypassPreReqs';
     static readonly EXTENSION_LOCAL_FABRIC: string = 'ibm-blockchain-platform.ext.enableLocalFabric';
+    static readonly EXTENSION_SAAS_CONFIG_UPDATES: string = 'ibm-blockchain-platform.ext.PollForConfigUpdatesWhenConnectedToIBM BlockchainPlatformOnIBM CloudEnvironments';
 
     // HOME CONFIGURATIONS
     static readonly HOME_SHOW_ON_STARTUP: string = 'ibm-blockchain-platform.home.showOnStartup';
     static readonly HOME_SHOW_ON_NEXT_ACTIVATION: string = 'ibm-blockchain-platform.home.showOnNextActivation';
+
+    // Feature flags
+    static readonly FEATURE_FLAGS: string = 'ibm-blockchain-platform.ext.featureFlags';
+
+    // auto adding SaaS environments
+    static readonly DISCOVER_SAAS_ENVS: string = 'ibm-blockchain-platform.ext.discoverSaasEnvs';
 }
